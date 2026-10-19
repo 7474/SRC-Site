@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - name: Check pack definitions
+        run: |
+          for f in packs/*.json; do
+            jq -e --arg id "$(basename "$f" .json)" '.id == $id and (.source.type | IN("zip", "srcsharp", "command"))' "$f" > /dev/null || { echo "::error file=$f::定義が正しくない"; exit 1; }
+          done

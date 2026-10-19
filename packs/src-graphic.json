@@ -1,0 +1,21 @@
+{
+  "id": "src-graphic",
+  "title": "SRC 汎用グラフィック集",
+  "description": "マップチップ（Bitmap/Map）・イベント用の画像（Bitmap/Event）・スペシャルパワーアニメ（Lib/スペシャルパワー.eve）。",
+  "source_name": "SRC 公式サイトの汎用データ（SRC フルパッケージ 2.2.33）",
+  "source_url": "http://www.src-srpg.jpn.org/info_kiyaku.shtml",
+  "license": "有償での配布は禁止。マップ用画像・スペシャルコマンド用画像は改変してシナリオに添付してよい（SRC 公式サイトの規約）。",
+  "is_default": 1,
+  "priority": 10,
+  "source": {
+    "type": "zip",
+    "url": "http://www.src-srpg.jpn.org/download/srcall-2_2_33-111106.zip",
+    "sha256": "b972b2010ac22306477c572c6028e64821ebdd4143da1c1b798b2f6afcc53cd9",
+    "strip": 1,
+    "include": [
+      "Bitmap/Map/",
+      "Bitmap/Event/",
+      "Lib/スペシャルパワー.eve"
+    ]
+  }
+}

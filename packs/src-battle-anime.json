@@ -1,0 +1,20 @@
+{
+  "id": "src-battle-anime",
+  "title": "SRC 汎用戦闘アニメ",
+  "description": "戦闘アニメの画像（Bitmap/Anime）とイベント（Lib/汎用戦闘アニメ）。使い方は汎用戦闘アニメのマニュアルを参照。",
+  "source_name": "SRC 公式サイトの汎用データ（SRC フルパッケージ 2.2.33）",
+  "source_url": "http://www.src-srpg.jpn.org/info_kiyaku.shtml",
+  "license": "有償での配布は禁止。汎用戦闘アニメの画像・eve ファイルは改変、改変物のシナリオへの添付・素材サイトへの投稿を認める（SRC 公式サイトの規約）。",
+  "is_default": 1,
+  "priority": 20,
+  "source": {
+    "type": "zip",
+    "url": "http://www.src-srpg.jpn.org/download/srcall-2_2_33-111106.zip",
+    "sha256": "b972b2010ac22306477c572c6028e64821ebdd4143da1c1b798b2f6afcc53cd9",
+    "strip": 1,
+    "include": [
+      "Bitmap/Anime/",
+      "Lib/汎用戦闘アニメ/"
+    ]
+  }
+}

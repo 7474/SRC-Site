@@ -1,0 +1,84 @@
+{
+  // SRC-Site: SRC#Web を組み込んだ SRC シナリオの投稿・配布ポータル（docs/architecture.md）
+  // 既定（--env なし）はローカル開発用。配信は --env staging（workers.dev）と --env production（src.koudenpa.net）
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "src-site-dev",
+  "main": "src/index.tsx",
+  "compatibility_date": "2026-10-15",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    // deploy ワークフロー（scripts/assemble.sh）が dist/ にポータルの静的ファイル（static/）と SRC#Web（play/）を置く
+    "directory": "./dist",
+    "binding": "ASSETS",
+    // 認証・ヘッダ（クロスオリジン分離）のため、すべての要求で Worker を先に動かす
+    "run_worker_first": true
+  },
+  "vars": {
+    "SITE_NAME": "SRC-Site",
+    "R2_BUCKET": "src-site-dev"
+  },
+  "d1_databases": [
+    { "binding": "DB", "database_name": "src-site-dev", "database_id": "00000000-0000-0000-0000-000000000000", "migrations_dir": "migrations" }
+  ],
+  "r2_buckets": [
+    { "binding": "FILES", "bucket_name": "src-site-dev" }
+  ],
+  "queues": {
+    "producers": [{ "binding": "INSPECT", "queue": "src-site-dev-inspect" }],
+    "consumers": [{ "queue": "src-site-dev-inspect", "max_batch_size": 1, "max_retries": 3 }]
+  },
+  "ratelimits": [
+    { "name": "API_LIMITER", "namespace_id": "7401", "simple": { "limit": 120, "period": 60 } },
+    { "name": "WRITE_LIMITER", "namespace_id": "7402", "simple": { "limit": 20, "period": 60 } }
+  ],
+  // 投稿されないまま残った版の片付けと、検査の取りこぼしの拾い直し
+  "triggers": { "crons": ["*/10 * * * *"] },
+  // zip の検査（sha256 を計算するため、大きい zip では CPU を使う）には Workers Paid が要る。
+  // Paid にしたら次を戻す（Free では CPU の上限を設定できず、配信が失敗する）
+  // "limits": { "cpu_ms": 300000 },
+  "observability": { "enabled": true },
+  "workers_dev": true,
+  "preview_urls": false,
+
+  // 通報の Google フォーム（docs/operations.md の「通報」）。{url}・{title} は事前入力の項目
+  "env": {
+    "staging": {
+      "name": "src-site-staging",
+      "vars": { "SITE_NAME": "SRC-Site（確認）", "R2_BUCKET": "src-site-staging", "REPORT_FORM_URL": "https://docs.google.com/forms/d/e/1FAIpQLSeWaqUfmgC0xPP9zXYV5kYqyJu0iHbH5Xzmmmn6ykEH1SBUNw/viewform?usp=pp_url&entry.1926660821={url}&entry.1488419007={title}" },
+      // database_id は wrangler d1 create src-site-staging の出力（scripts/bootstrap.sh）
+      "d1_databases": [
+        { "binding": "DB", "database_name": "src-site-staging", "database_id": "cd83b950-2450-4ce5-bc86-4c20b38d9a60", "migrations_dir": "migrations" }
+      ],
+      "r2_buckets": [{ "binding": "FILES", "bucket_name": "src-site-staging" }],
+      "queues": {
+        "producers": [{ "binding": "INSPECT", "queue": "src-site-staging-inspect" }],
+        "consumers": [{ "queue": "src-site-staging-inspect", "max_batch_size": 1, "max_retries": 3 }]
+      },
+      "ratelimits": [
+        { "name": "API_LIMITER", "namespace_id": "7411", "simple": { "limit": 120, "period": 60 } },
+        { "name": "WRITE_LIMITER", "namespace_id": "7412", "simple": { "limit": 20, "period": 60 } }
+      ],
+      "triggers": { "crons": ["*/10 * * * *"] },
+      "workers_dev": true
+    },
+    "production": {
+      "name": "src-site",
+      "vars": { "SITE_NAME": "SRC-Site", "R2_BUCKET": "src-site", "REPORT_FORM_URL": "https://docs.google.com/forms/d/e/1FAIpQLSeWaqUfmgC0xPP9zXYV5kYqyJu0iHbH5Xzmmmn6ykEH1SBUNw/viewform?usp=pp_url&entry.1926660821={url}&entry.1488419007={title}" },
+      "routes": [{ "pattern": "src.koudenpa.net", "custom_domain": true }],
+      "d1_databases": [
+        { "binding": "DB", "database_name": "src-site", "database_id": "5a6976ca-0570-42dc-b095-617bb214c642", "migrations_dir": "migrations" }
+      ],
+      "r2_buckets": [{ "binding": "FILES", "bucket_name": "src-site" }],
+      "queues": {
+        "producers": [{ "binding": "INSPECT", "queue": "src-site-inspect" }],
+        "consumers": [{ "queue": "src-site-inspect", "max_batch_size": 1, "max_retries": 3 }]
+      },
+      "ratelimits": [
+        { "name": "API_LIMITER", "namespace_id": "7421", "simple": { "limit": 120, "period": 60 } },
+        { "name": "WRITE_LIMITER", "namespace_id": "7422", "simple": { "limit": 20, "period": 60 } }
+      ],
+      "triggers": { "crons": ["*/10 * * * *"] },
+      "workers_dev": false
+    }
+  }
+}

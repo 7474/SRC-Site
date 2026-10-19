@@ -1,0 +1,86 @@
+/* SRC-Site のポータル。飾りは控えめにし、読みやすさを優先する */
+:root {
+  --bg: #f6f5f1;
+  --panel: #ffffff;
+  --text: #1d1d1f;
+  --muted: #6b6b70;
+  --line: #dddad2;
+  --accent: #1f5fbf;
+  --accent-text: #ffffff;
+  --error: #b42318;
+  --stopped: #b42318;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #17181b;
+    --panel: #212226;
+    --text: #e8e8ea;
+    --muted: #9a9aa2;
+    --line: #34353a;
+    --accent: #6ea8ff;
+    --accent-text: #0b1220;
+    --error: #ff8a80;
+    --stopped: #ff8a80;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.7 system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", "Meiryo", sans-serif;
+}
+a { color: var(--accent); }
+main { max-width: 880px; margin: 0 auto; padding: 16px; }
+.site-header {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px;
+  padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line);
+}
+.site-name { font-weight: 700; font-size: 18px; color: var(--text); text-decoration: none; }
+.site-header .search { flex: 1; min-width: 160px; }
+.site-header .search input { width: 100%; }
+.site-header nav { display: flex; gap: 14px; }
+.site-footer { max-width: 880px; margin: 32px auto; padding: 16px; display: flex; flex-wrap: wrap; gap: 16px; color: var(--muted); font-size: 13px; }
+h1 { font-size: 24px; line-height: 1.4; margin: 12px 0; }
+h2 { font-size: 18px; margin: 24px 0 8px; }
+section, article { margin-bottom: 16px; }
+.intro { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 4px 16px; }
+.scenario-list { list-style: none; padding: 0; margin: 0; }
+.scenario-list li { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; margin-bottom: 8px; }
+.scenario-list .title { font-weight: 600; font-size: 16px; }
+.meta, .muted, .small { color: var(--muted); font-size: 13px; }
+.summary { margin: 4px 0 0; font-size: 14px; }
+.badge { display: inline-block; font-size: 12px; padding: 0 6px; border: 1px solid var(--line); border-radius: 4px; vertical-align: middle; }
+.stopped { color: var(--stopped); border-color: var(--stopped); }
+.pre { white-space: pre-wrap; }
+.tags .tag { margin-right: 8px; font-size: 13px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.button, button {
+  display: inline-block; padding: 7px 14px; border-radius: 6px; border: 1px solid var(--line);
+  background: var(--panel); color: var(--text); font: inherit; text-decoration: none; cursor: pointer;
+}
+.button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
+button.link { border: 0; background: none; padding: 0; color: var(--accent); text-decoration: underline; }
+button.danger { color: var(--error); border-color: var(--error); }
+button:disabled { opacity: 0.5; cursor: default; }
+input, select, textarea { font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--text); max-width: 100%; }
+.form label, form label { display: block; margin: 10px 0; }
+.form label input:not([type=checkbox]), .form label textarea, .form label select { display: block; width: 100%; margin-top: 4px; }
+label.check { display: flex; gap: 8px; align-items: baseline; }
+form.inline { display: inline; }
+form.compact { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+form.compact label { margin: 0; }
+.notice { padding: 8px 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); }
+.notice.error, .error { color: var(--error); }
+table { width: 100%; border-collapse: collapse; background: var(--panel); font-size: 14px; }
+th, td { border: 1px solid var(--line); padding: 6px 8px; text-align: left; vertical-align: top; }
+.gate { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px; }
+.doc { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 20px; }
+.report { margin-top: 32px; }
+progress { width: 100%; }
+dl dt { font-weight: 600; margin-top: 8px; }
+dl dd { margin-left: 0; }
+@media (max-width: 600px) {
+  table { display: block; overflow-x: auto; }
+}
