@@ -4,7 +4,7 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "src-site-dev",
   "main": "src/index.tsx",
-  "compatibility_date": "2025-10-01",
+  "compatibility_date": "2026-10-15",
   "compatibility_flags": ["nodejs_compat"],
   "assets": {
     // deploy ワークフロー（scripts/assemble.sh）が dist/ にポータルの静的ファイル（static/）と SRC#Web（play/）を置く

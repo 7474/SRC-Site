@@ -1,4 +1,5 @@
-import type { Context, Next } from 'hono';
+import type { Context } from 'hono';
+import { createMiddleware } from 'hono/factory';
 import { getCookie } from 'hono/cookie';
 import type { AppEnv } from '../env';
 
@@ -27,7 +28,8 @@ export function canEdit(c: Context<AppEnv>, s: ScenarioRow): boolean {
   return Boolean(user && !user.suspended && (user.id === s.owner_id || user.role === 'admin'));
 }
 
-export async function requireUser(c: Context<AppEnv>, next: Next) {
+// createMiddleware で作り、後ろのハンドラのパスのパラメータの型を保つ
+export const requireUser = createMiddleware<AppEnv>(async (c, next) => {
   const user = c.get('user');
   if (!user) {
     if (c.req.path.startsWith('/api/')) {
@@ -39,15 +41,15 @@ export async function requireUser(c: Context<AppEnv>, next: Next) {
     return c.text('アカウントが停止されています。', 403);
   }
   await next();
-}
+});
 
-export async function requireAdmin(c: Context<AppEnv>, next: Next) {
+export const requireAdmin = createMiddleware<AppEnv>(async (c, next) => {
   const user = c.get('user');
   if (!user || user.role !== 'admin') {
     return c.notFound();
   }
   await next();
-}
+});
 
 /** 年齢の確かめ（Cookie の age。r18 は r15 も含む） */
 export function ageConfirmed(c: Context<AppEnv>, rating: string): boolean {
