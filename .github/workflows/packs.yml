@@ -32,7 +32,27 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Cloudflare の Secrets が無ければ（準備前）配信しない。失敗にはしない
+  check:
+    runs-on: ubuntu-24.04
+    environment: ${{ inputs.environment || 'staging' }}
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
+    steps:
+      - id: check
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -n "$CLOUDFLARE_API_TOKEN" ] && [ -n "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::CLOUDFLARE_API_TOKEN・CLOUDFLARE_ACCOUNT_ID が無いので配信しない（docs/operations.md）"
+          fi
+
   publish:
+    needs: check
+    if: needs.check.outputs.ready == 'true'
     runs-on: ubuntu-24.04
     environment: ${{ inputs.environment || 'staging' }}
     steps:
