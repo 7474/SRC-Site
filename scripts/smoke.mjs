@@ -133,7 +133,7 @@ assert.match(await res.text(), /18 歳以上ですか/);
 assert.doesNotMatch(await (await visitor.req('/')).text(), new RegExp(slug), 'R18 は既定で一覧に出さない');
 res = await visitor.form('/prefs/age', { rating: 'r18', next: `/scenarios/${slug}` });
 res = await visitor.req(`/scenarios/${slug}`);
-assert.match(await res.text(), /Web 版で遊ぶ/);
+assert.match(await res.text(), /SRC#Web で遊ぶ/);
 catalog = await (await visitor.req('/api/catalog.json')).json();
 assert.equal(catalog.entries.find(e => e.id === slug).rating, 'r18');
 step('年齢の区分（確かめる頁・一覧から隠す・カタログの rating）');
