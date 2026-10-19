@@ -33,11 +33,19 @@ function u64(b: Uint8Array, o: number) {
 }
 
 let sjis: TextDecoder | null | undefined;
+const strictUtf8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: false });
 function decodeName(bytes: Uint8Array, utf8: boolean): string {
   if (utf8) {
     return new TextDecoder('utf-8').decode(bytes);
   }
-  // Windows で作った zip は Shift_JIS が多い。使えなければ 1 バイトずつ読む（拡張子と区切りの判定には足りる）
+  // 印が無くても、UTF-8 として正しく読めれば UTF-8（macOS・Linux の zip は UTF-8 の名前に印を付けないことがある）。
+  // SRC#Web（ScenarioArchive の ZipNameEncoding）と同じ規則にし、root・.eve の名前を合わせる
+  try {
+    return strictUtf8.decode(bytes);
+  } catch {
+    // UTF-8 でなければ Shift_JIS（Windows で作った zip）
+  }
+  // 使えなければ 1 バイトずつ読む（拡張子と区切りの判定には足りる）
   if (sjis === undefined) {
     try {
       sjis = new TextDecoder('shift_jis');

@@ -39,14 +39,20 @@ export function Home(props: { q: string; latest: ListItem[]; popular: ListItem[]
         <>
           <section class="intro">
             <p>SRC（Simulation RPG Construction）のシナリオを投稿・配布するサイトです。ブラウザ版の SRC#Web ですぐ遊べ、zip をダウンロードして手元の SRC・SRC# でも遊べます。</p>
+            <div class="actions">
+              <a class="button primary" href="/play/">SRC#Web で遊ぶ</a>
+              <a class="button" href="/my/scenarios/new">シナリオを投稿する</a>
+            </div>
           </section>
-          <section>
-            <h2>人気（7 日間）</h2>
-            <ScenarioList items={props.popular} />
-          </section>
+          {props.popular.length > 0 && (
+            <section>
+              <h2>人気（7 日間）</h2>
+              <ScenarioList items={props.popular} />
+            </section>
+          )}
           <section>
             <h2>新着</h2>
-            <ScenarioList items={props.latest} />
+            <ScenarioList items={props.latest} empty="まだありません。最初のシナリオを投稿してみてください。" />
           </section>
         </>
       )}
@@ -70,16 +76,19 @@ export function ScenarioPage(props: {
   return (
     <article class="scenario">
       <h1>{s.title}</h1>
-      <p class="meta">作者: {s.author ?? s.handle}（投稿: <a href={`/users/${s.handle}`}>{s.handle}</a>）{s.visibility === 'unlisted' && ' ・ 限定公開'}</p>
+      <p class="meta">
+        {s.author && s.author !== s.handle && <>作者: {s.author} ・ </>}投稿: <a href={`/users/${s.handle}`}>{s.handle}</a>
+        {latest && <> ・ 第 {latest.number} 版（{formatDate(latest.published_at ?? latest.created_at)}）</>}
+        {s.visibility === 'unlisted' && ' ・ 限定公開'}
+      </p>
       {s.hidden ? <Notice kind="error">運営により公開を止めています。{s.hidden_reason}</Notice> : null}
-      {props.canEdit && <p><a class="button" href={`/my/scenarios/${s.slug}`}>編集・新しい版を上げる</a></p>}
-      {latest ? (
+      {!latest && <p class="muted">公開している版がありません。</p>}
+      {(latest || props.canEdit) && (
         <div class="actions">
-          <a class="button primary" href={`/play/?play=${encodeURIComponent(s.slug)}`}>SRC#Web で遊ぶ</a>
-          <a class="button" href={`/scenarios/${s.slug}/download`}>ダウンロード（{formatSize(latest.size)}）</a>
+          {latest && <a class="button primary" href={`/play/?play=${encodeURIComponent(s.slug)}`}>SRC#Web で遊ぶ</a>}
+          {latest && <a class="button" href={`/scenarios/${s.slug}/download`}>ダウンロード（{formatSize(latest.size)}）</a>}
+          {props.canEdit && <a class="button" href={`/my/scenarios/${s.slug}`}>編集・新しい版を上げる</a>}
         </div>
-      ) : (
-        <p class="muted">公開している版がありません。</p>
       )}
       {s.description && <section><h2>説明</h2><p class="pre">{s.description}</p></section>}
       {s.tags.length > 0 && <p class="tags">{s.tags.map(t => <a class="tag" href={`/?q=${encodeURIComponent(t)}`}>{t}</a>)}</p>}
@@ -94,7 +103,7 @@ export function ScenarioPage(props: {
       <section>
         <h2>一緒に使う共有パック</h2>
         {props.packs.length === 0 ? <p class="muted">ありません。</p> : (
-          <ul>{props.packs.map(p => <li><a href={`/packs/${p.id}`}>{p.title}</a>（{p.source_name}）</li>)}</ul>
+          <ul>{props.packs.map(p => <li><a href={`/packs/${p.id}`}>{p.title}</a> <span class="muted">{p.source_name}</span></li>)}</ul>
         )}
         <p class="muted small">BGM（版権曲など）はサイトでは配っていません。お持ちの MIDI・MP3 を zip にして SRC#Web の「アーカイブを追加」の素材の欄から入れると、どのシナリオでも使えます。</p>
       </section>
@@ -146,7 +155,7 @@ export function MePage(props: { handle: string; termsAccepted: boolean; items: (
         <h1>設定</h1>
         {props.error && <Notice kind="error">{props.error}</Notice>}
         {props.saved && <Notice>保存しました。</Notice>}
-        <form method="post" action="/my">
+        <form method="post" action="/my" class="form">
           <label>表示名（英数字・_・-、3〜24 文字。投稿者の頁の URL にも使います）
             <input name="handle" value={props.handle} pattern="[A-Za-z0-9_\-]{3,24}" required />
           </label>
@@ -156,7 +165,7 @@ export function MePage(props: { handle: string; termsAccepted: boolean; items: (
           </label>
           <button type="submit">保存</button>
         </form>
-        <form method="post" action="/auth/logout" class="inline"><button type="submit" class="link">ログアウト</button></form>
+        <form method="post" action="/auth/logout"><button type="submit" class="link">ログアウト</button></form>
       </section>
       <section>
         <h2>投稿したシナリオ</h2>
@@ -166,9 +175,11 @@ export function MePage(props: { handle: string; termsAccepted: boolean; items: (
             {props.items.map(s => (
               <li>
                 <a class="title" href={`/scenarios/${s.slug}`}>{s.title}</a>
-                {s.visibility !== 'public' && <span class="badge">{s.visibility === 'unlisted' ? '限定公開' : '非公開'}</span>}
-                {s.hidden ? <span class="badge stopped">運営が停止</span> : null}
-                {' '}<a href={`/my/scenarios/${s.slug}`}>編集</a>
+                <span class="list-badges">
+                  {s.visibility !== 'public' && <span class="badge">{s.visibility === 'unlisted' ? '限定公開' : '非公開'}</span>}
+                  {s.hidden ? <span class="badge stopped">運営が停止</span> : null}
+                </span>
+                <div class="meta">{formatDate(s.updated_at)} ・ <a href={`/my/scenarios/${s.slug}`}>編集・新しい版を上げる</a></div>
               </li>
             ))}
           </ul>
@@ -249,35 +260,32 @@ export function EditPage(props: {
       </section>
       <section>
         <h2>版</h2>
-        <table class="versions">
-          <thead><tr><th>版</th><th>状態</th><th>大きさ</th><th>日時</th><th>最初の .eve・使うパック</th><th></th></tr></thead>
-          <tbody>
+        {props.versions.length === 0 ? <p class="muted">まだありません。上の「新しい版を上げる」から zip を上げてください。</p> : (
+          <ul class="version-list">
             {props.versions.map(v => (
-              <tr>
-                <td>{v.number}</td>
-                <td>{STATE_LABELS[v.state] ?? v.state}{v.inspect_note && <div class="small error">{v.inspect_note}</div>}</td>
-                <td>{formatSize(v.size)}</td>
-                <td>{formatDate(v.created_at)}</td>
-                <td>
-                  {v.state === 'published' && (
-                    <form method="post" action={`/my/versions/${v.id}/settings`} class="compact">
-                      <label>root<input name="root" value={v.root ?? ''} /></label>
-                      <label>.eve<input name="eve" value={v.eve ?? ''} /></label>
-                      <button type="submit">変える</button>
-                    </form>
-                  )}
-                </td>
-                <td>
+              <li>
+                <div class="version-head">
+                  <strong>第 {v.number} 版</strong>
+                  <span class={`badge${v.state === 'rejected' ? ' stopped' : ''}`}>{STATE_LABELS[v.state] ?? v.state}</span>
+                  <span class="meta">{formatSize(v.size)} ・ {formatDate(v.created_at)}{v.note && <> ・ {v.note}</>}</span>
                   {(v.state === 'published' || v.state === 'rejected') && (
-                    <form method="post" action={`/my/versions/${v.id}/delete`} onsubmit="return confirm('この版を消しますか？')">
-                      <button type="submit" class="link">消す</button>
+                    <form method="post" action={`/my/versions/${v.id}/delete`} class="version-delete" onsubmit="return confirm('この版を消しますか？')">
+                      <button type="submit" class="link">この版を消す</button>
                     </form>
                   )}
-                </td>
-              </tr>
+                </div>
+                {v.inspect_note && <div class="small error">{v.inspect_note}</div>}
+                {v.state === 'published' && (
+                  <form method="post" action={`/my/versions/${v.id}/settings`} class="compact">
+                    <label>フォルダ（root）<input name="root" value={v.root ?? ''} /></label>
+                    <label>最初の .eve<input name="eve" value={v.eve ?? ''} /></label>
+                    <button type="submit">変える</button>
+                  </form>
+                )}
+              </li>
             ))}
-          </tbody>
-        </table>
+          </ul>
+        )}
       </section>
       {latestPublished && (
         <section>
@@ -319,9 +327,16 @@ export function PacksPage(props: { packs: { id: string; title: string; source_na
     <section>
       <h1>共有パック</h1>
       <p>シナリオと一緒に読み込んで使う素材です。「既定」のものはすべてのシナリオで使います（投稿者が外せます）。</p>
-      <ul>
+      <ul class="scenario-list">
         {props.packs.map(p => (
-          <li><a href={`/packs/${p.id}`}>{p.title}</a>（{p.source_name}・{formatSize(p.size)}）{p.is_default ? ' 既定' : ''}{p.withdrawn ? ' 取り下げ' : ''}</li>
+          <li>
+            <a class="title" href={`/packs/${p.id}`}>{p.title}</a>
+            <span class="list-badges">
+              {p.is_default ? <span class="badge">既定</span> : null}
+              {p.withdrawn ? <span class="badge stopped">取り下げ</span> : null}
+            </span>
+            <div class="meta">{p.source_name} ・ {formatSize(p.size)}</div>
+          </li>
         ))}
       </ul>
     </section>
@@ -338,6 +353,11 @@ export function PackPage(props: {
       <h1>{p.title}</h1>
       {p.withdrawn ? <Notice kind="error">配布を止めています。</Notice> : null}
       {p.description && <p class="pre">{p.description}</p>}
+      {!p.withdrawn && (
+        <div class="actions">
+          <a class="button" href={`/files/packs/${p.id}/${p.version}.zip`} download={`${p.id}.zip`}>ダウンロード（{formatSize(p.size)}）</a>
+        </div>
+      )}
       <dl>
         <dt>配布元</dt><dd>{p.source_url ? <a href={p.source_url}>{p.source_name}</a> : p.source_name}</dd>
         <dt>条件</dt><dd class="pre">{p.license}</dd>
