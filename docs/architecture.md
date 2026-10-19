@@ -232,7 +232,7 @@ CREATE TABLE counters (
 | `staging/<uuid>.zip` | アップロード中・検査中の zip | 検査が済んだら移す。残ったものはライフサイクルで 1 日後に消す |
 | `scenarios/<slug>/<number>.zip` | 公開した版 | 版を消したとき。退会・取り下げは 30 日後 |
 | `packs/<id>/<version>.zip` | 共有パック | 新しい版を作り、古い版を参照するカタログが無くなってから |
-| `web/<SRC のコミット>/…` | SRC#Web の大きい発行物 | 古い版は手で消す |
+| `web/…` | SRC#Web の 25 MiB を超える発行物（`/play/…` で静的アセットに無いとき返す） | 配信のたびに上書きする |
 
 - 1 つのシナリオの zip は 1 GB まで（ロボッとダンジョンＢ！は約 270 MB）。投稿者ごとの合計は 5 GB まで（後で見直す）
 - バケットの CORS は `https://src.koudenpa.net` と確認環境の origin に `PUT` だけを許す（[R2 の CORS](https://developers.cloudflare.com/r2/buckets/cors/)）
