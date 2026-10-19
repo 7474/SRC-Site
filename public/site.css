@@ -27,21 +27,30 @@
 * { box-sizing: border-box; }
 body {
   margin: 0;
+  min-height: 100vh; display: flex; flex-direction: column;
   background: var(--bg);
   color: var(--text);
   font: 15px/1.7 system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", "Meiryo", sans-serif;
 }
 a { color: var(--accent); }
-main { max-width: 880px; margin: 0 auto; padding: 16px; }
-.site-header {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px;
-  padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line);
+/* ヘッダ・本文・フッタの左右を本文の列（880px）に揃える */
+main { flex: 1; width: 100%; max-width: 880px; margin: 0 auto; padding: 16px; }
+.site-header { padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
+.site-header-inner {
+  max-width: 848px; margin: 0 auto;
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "brand search nav";
+  align-items: center; gap: 8px 20px;
 }
-.site-name { font-weight: 700; font-size: 18px; color: var(--text); text-decoration: none; }
-.site-header .search { flex: 1; min-width: 160px; }
-.site-header .search input { width: 100%; }
-.site-header nav { display: flex; gap: 14px; }
-.site-footer { max-width: 880px; margin: 32px auto; padding: 16px; display: flex; flex-wrap: wrap; gap: 16px; color: var(--muted); font-size: 13px; }
+.site-name { grid-area: brand; font-weight: 700; font-size: 18px; color: var(--text); text-decoration: none; }
+.site-header .search { grid-area: search; margin: 0; }
+.site-header .search input { display: block; width: 100%; }
+.site-header nav { grid-area: nav; display: flex; gap: 14px; white-space: nowrap; }
+.site-header nav a { text-decoration: none; }
+.site-header nav a:hover { text-decoration: underline; }
+.site-footer {
+  width: 100%; max-width: 880px; margin: 32px auto 0; padding: 16px;
+  display: flex; flex-wrap: wrap; gap: 16px; color: var(--muted); font-size: 13px; border-top: 1px solid var(--line);
+}
 h1 { font-size: 24px; line-height: 1.4; margin: 12px 0; }
 h2 { font-size: 18px; margin: 24px 0 8px; }
 section, article { margin-bottom: 16px; }
@@ -78,9 +87,20 @@ th, td { border: 1px solid var(--line); padding: 6px 8px; text-align: left; vert
 .gate { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px; }
 .doc { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 20px; }
 .report { margin-top: 32px; }
+.version-list { list-style: none; padding: 0; margin: 0; }
+.version-list li { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; margin-bottom: 8px; }
+.version-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.version-head .version-delete { margin-left: auto; }
+.version-list form.compact { margin-top: 8px; }
+.version-list form.compact input { width: 14em; }
+.list-badges { margin-left: 6px; }
+.list-badges .badge { margin-right: 4px; }
 progress { width: 100%; }
 dl dt { font-weight: 600; margin-top: 8px; }
 dl dd { margin-left: 0; }
 @media (max-width: 600px) {
   table { display: block; overflow-x: auto; }
+  .site-header-inner { grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "brand nav" "search search"; }
+  .site-header nav { justify-content: flex-end; }
+  .version-list form.compact input { width: 100%; }
 }

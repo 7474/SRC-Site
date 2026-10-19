@@ -12,6 +12,21 @@ import { admin } from './routes/admin';
 
 const app = new Hono<AppEnv>();
 
+// どの応答にも付ける。ほかのサイトの枠（iframe）には入れない
+const SECURITY = {
+  'X-Content-Type-Options': 'nosniff',
+  'Referrer-Policy': 'strict-origin-when-cross-origin',
+  'X-Frame-Options': 'SAMEORIGIN',
+};
+app.use('*', async (c, next) => {
+  await next();
+  // 静的アセット・R2 の応答はヘッダを変えられないので、作り直す
+  c.res = new Response(c.res.body, c.res);
+  for (const [k, v] of Object.entries(SECURITY)) {
+    c.res.headers.set(k, v);
+  }
+});
+
 // SRC#Web（マルチスレッドの WebAssembly）はクロスオリジン分離が要る。/play/ の下だけに付ける
 const ISOLATION = {
   'Cross-Origin-Opener-Policy': 'same-origin',

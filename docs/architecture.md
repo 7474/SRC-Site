@@ -12,7 +12,7 @@
 | グレーゾーンの素材 | 申し出があるまでは扱う。申し出があれば取り下げる |
 | JASRAC 管理曲 | サイトでは配らない。利用者がブラウザに追加する |
 | 汎用データの配布元への問い合わせ | 保留（グレーゾーンとして扱い、取り下げの仕組みで備える） |
-| ドメイン | 本番 `src.koudenpa.net`、確認環境 `*.workers.dev`（名前は仮。koudenpa.net のゾーンが Cloudflare にある前提） |
+| ドメイン | 本番 `src.koudenpa.net`。確認は本番の Worker のバージョン URL（`staging-src-site.koudenpa.workers.dev`） |
 
 ## 全体構成
 
@@ -281,7 +281,7 @@ CREATE TABLE counters (
 | `web/…` | SRC#Web の 25 MiB を超える発行物（`/play/…` で静的アセットに無いとき返す） | 配信のたびに上書きする |
 
 - 1 つのシナリオの zip は 1 GB まで（ロボッとダンジョンＢ！は約 270 MB）。投稿者ごとの合計は 5 GB まで（後で見直す）
-- バケットの CORS は `https://src.koudenpa.net` と確認環境の origin に `PUT` だけを許す（[R2 の CORS](https://developers.cloudflare.com/r2/buckets/cors/)）
+- バケットの CORS は `https://src.koudenpa.net` と確認のバージョン URL（`https://staging-src-site.koudenpa.workers.dev`）に `PUT` だけを許す（[R2 の CORS](https://developers.cloudflare.com/r2/buckets/cors/)）
 
 ## 投稿
 
@@ -416,17 +416,16 @@ flowchart TB
 
 | 環境 | ドメイン | 配信 |
 |---|---|---|
-| 確認 | `src-site-staging.<サブドメイン>.workers.dev` | `main` への push |
-| 本番 | `src.koudenpa.net`（Workers のカスタムドメイン） | タグ `v*` の push か手動 |
+| 本番 | `src.koudenpa.net`（Workers のカスタムドメイン） | `main` への push か手動 |
+| 確認 | 本番の Worker のバージョン URL（`staging-src-site.koudenpa.workers.dev`・`pr-<番号>-src-site.koudenpa.workers.dev`） | PR か手動（`wrangler versions upload --preview-alias`） |
 
-- 環境ごとに D1・R2・Queues を分ける（`wrangler.jsonc` の `env`）
+- 環境は本番の 1 つだけ。確認のバージョン URL は本番と同じ D1・R2・Queues を使う（[Version URLs](https://developers.cloudflare.com/workers/versions-and-deployments/version-urls/)）
 - `.github/workflows/deploy.yml`
   1. 7474/SRC の指定の版で SRC#Web を AOT で発行する（キャッシュがあれば使う）
   2. `dist/` にポータルの静的ファイルと SRC#Web を置き、25 MiB を超えるものを R2 の `web/` に上げる
-  3. `wrangler d1 migrations apply`
-  4. `wrangler deploy`
+  3. 本番なら `wrangler d1 migrations apply` と `wrangler deploy`。確認なら `wrangler versions upload --preview-alias`（マイグレーションは当てない）
 - Secrets: `CLOUDFLARE_API_TOKEN`・`CLOUDFLARE_ACCOUNT_ID`（Actions）、`GOOGLE_CLIENT_ID`・`GOOGLE_CLIENT_SECRET`・`SESSION_SECRET`・`R2_ACCESS_KEY_ID`・`R2_SECRET_ACCESS_KEY`・`TURNSTILE_SECRET`（Worker）
-- Google の OAuth クライアントのリダイレクト URI に、本番と確認環境の `/auth/callback` を登録する
+- Google の OAuth クライアントのリダイレクト URI に、本番と `staging` のバージョン URL の `/auth/callback` を登録する
 
 ## 監視とバックアップ
 
@@ -446,7 +445,7 @@ flowchart TB
 
 | 段階 | 内容 | できたと言える状態 |
 |---|---|---|
-| 1. 土台 | リポジトリの雛形、D1 のマイグレーション、R2、`deploy.yml`、確認環境 | 確認環境で空のポータルと `/play/` の SRC#Web が開く |
+| 1. 土台 | リポジトリの雛形、D1 のマイグレーション、R2、`deploy.yml` | 本番で空のポータルと `/play/` の SRC#Web が開く |
 | 2. 閲覧と遊ぶ | 一覧・詳細・カタログ・ファイルの配信、共有パック（`src-basic`・`soundfont`）、運営がスクリプトで登録したシナリオ（ランタン号） | ランタン号をポータルから Web 版で遊べ、zip をダウンロードできる |
 | 3. ログインと投稿 | Google のログイン、投稿の API と画面、検査、版の管理 | Google でログインして zip を上げると、数分以内に一覧に出て遊べる |
 | 4. 運営 | 通報（Google フォーム）、運営の画面、取り下げ、規約と窓口の頁、Turnstile、回数の制限 | 通報からシナリオの非公開・パックのファイルの取り下げまでを画面でできる |

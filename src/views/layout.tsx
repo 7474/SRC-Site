@@ -14,8 +14,9 @@ export function Layout(props: { title: string; siteName: string; user: User | nu
       </head>
       <body>
         <header class="site-header">
+          <div class="site-header-inner">
           <a class="site-name" href="/">{siteName}</a>
-          <form class="search" action="/" method="get">
+          <form class="search" action="/" method="get" role="search">
             <input type="search" name="q" placeholder="シナリオを探す" aria-label="シナリオを探す" />
           </form>
           <nav>
@@ -30,6 +31,7 @@ export function Layout(props: { title: string; siteName: string; user: User | nu
               <a href="/auth/login">ログイン</a>
             )}
           </nav>
+          </div>
         </header>
         <main>{props.children}</main>
         <footer class="site-footer">

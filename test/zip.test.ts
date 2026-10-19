@@ -70,6 +70,12 @@ describe('readEntries', () => {
     expect(entries[0].name).toBe('開始.eve');
   });
 
+  it('UTF-8 の印の無い名前も、UTF-8 として正しく読めれば UTF-8 として読む', async () => {
+    // macOS・Linux の zip コマンドが作る形
+    const entries = await readEntries(reader(makeZip([{ name: text('灯の港/01_灯の港.eve'), data: text('a'), utf8: false }])));
+    expect(entries[0].name).toBe('灯の港/01_灯の港.eve');
+  });
+
   it('zip でないものは弾く', async () => {
     await expect(readEntries(reader(text('not a zip file at all, just text')))).rejects.toThrow(/zip ではありません/);
   });
