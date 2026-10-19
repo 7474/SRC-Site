@@ -5,8 +5,13 @@
 | 環境 | Worker | ドメイン | D1・R2 | Queue |
 |---|---|---|---|---|
 | ローカル | `src-site-dev` | `http://localhost:8787` | `src-site-dev`（`--local`） | `src-site-dev-inspect` |
-| 確認 | `src-site-staging` | `src-site-staging.koudenpa.workers.dev` | `src-site-staging` | `src-site-staging-inspect` |
 | 本番 | `src-site` | `src.koudenpa.net`（Workers のカスタムドメイン） | `src-site` | `src-site-inspect` |
+| 確認 | `src-site` のバージョン URL | `staging-src-site.koudenpa.workers.dev`・`pr-<番号>-src-site.koudenpa.workers.dev` | 本番と同じ | 本番と同じ |
+
+- 確認用の別の環境は持たない。配信前の版は本番の Worker のバージョン URL で確かめる（[Version URLs](https://developers.cloudflare.com/workers/versions-and-deployments/version-urls/)）
+  - データ（D1・R2・Queue）は本番と同じ。確認で投稿したものは本番に残るので、確かめたら消す
+  - D1 のマイグレーションは本番への配信のときだけ当てる。新しい列などを使う版は、マイグレーションを先に（後方互換に）出してから確かめる
+  - Queue の検査・定期の片付けは、本番に出ている版のコードで動く
 
 - 大きい zip の検査には Workers Paid が要る（Free は 1 要求の CPU が 10 ms）。Paid にしたら `wrangler.jsonc` の `limits.cpu_ms` のコメントを外す。Free のままでは `limits` を書くと配信が失敗する
 - カスタムドメインは `wrangler deploy` が DNS とともに作る（`koudenpa.net` が同じアカウントの Cloudflare のゾーンであること）。[Custom Domains](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/)
@@ -14,21 +19,17 @@
 ## 初めの準備
 
 1. Cloudflare の API トークンを作る。権限: Workers Scripts・Workers R2 Storage・D1・Queues の Edit、`koudenpa.net` の Workers Routes・DNS の Edit。[API トークン](https://developers.cloudflare.com/fundamentals/api/get-started/create-token/)
-2. 環境ごとに `scripts/bootstrap.sh` を実行し、書き換わった `wrangler.jsonc`（D1 の `database_id`）をコミットする
-   ```sh
-   ENV=staging ORIGIN=https://src-site-staging.<サブドメイン>.workers.dev bash scripts/bootstrap.sh
-   ENV=production ORIGIN=https://src.koudenpa.net bash scripts/bootstrap.sh
-   ```
-3. Google Cloud で OAuth クライアント（ウェブ アプリケーション）を作る。承認済みのリダイレクト URI に各環境の `/auth/callback` を加える。スコープは `openid` だけ。[OpenID Connect](https://developers.google.com/identity/openid-connect/openid-connect)
+2. `bash scripts/bootstrap.sh` を実行し、書き換わった `wrangler.jsonc`（D1 の `database_id`）をコミットする
+3. Google Cloud で OAuth クライアント（ウェブ アプリケーション）を作る。承認済みのリダイレクト URI に `https://src.koudenpa.net/auth/callback` と `https://staging-src-site.koudenpa.workers.dev/auth/callback` を加える。スコープは `openid` だけ。[OpenID Connect](https://developers.google.com/identity/openid-connect/openid-connect)
 4. R2 の API トークン（対象のバケットの Object Read & Write）を作る。署名付き URL のアップロードに使う。[R2 の API トークン](https://developers.cloudflare.com/r2/api/tokens/)
-5. Worker の Secret を入れる（`npx wrangler secret put <名前> --env <環境>`）
+5. Worker の Secret を入れる（`npx wrangler secret put <名前> --env production`）
 6. GitHub の Secrets・環境を設定する（下）
-7. Actions の Deploy（確認環境）と Packs を実行する
+7. Actions の Packs と Deploy を実行する
 8. 自分でログインしてから、運営にする（下）
 
 ## Secret
 
-### Worker（`wrangler secret put --env <環境>`）
+### Worker（`wrangler secret put --env production`）
 
 値が `PLACEHOLDER` の Secret は、無いものとして扱う（設定前の仮の値）。
 
@@ -43,7 +44,7 @@
 
 | 名前 | 種類 | 内容 |
 |---|---|---|
-| `CLOUDFLARE_API_TOKEN`・`CLOUDFLARE_ACCOUNT_ID` | Secret（環境 `staging`・`production`） | 上の 1 のトークン |
+| `CLOUDFLARE_API_TOKEN`・`CLOUDFLARE_ACCOUNT_ID` | Secret（GitHub の環境 `production`） | 上の 1 のトークン |
 | `MACKEREL_CLIENT_TOKEN` | Secret（任意） | SRC#Web のエラーの収集 |
 | `SRC_REF` | 変数（任意） | 発行する 7474/SRC のブランチ・タグ（既定は `master`） |
 
@@ -54,8 +55,8 @@
 | ワークフロー | いつ | すること |
 |---|---|---|
 | `ci.yml` | push・PR | 型検査・単体テスト・パックの定義の確認 |
-| `deploy.yml` | `main` への push → 確認環境。タグ `v*` → 本番。手動 | SRC#Web を AOT で発行（7474/SRC のコミットごとにキャッシュ）、`dist/` を組み立て、25 MiB を超えるものを R2 の `web/` へ、D1 のマイグレーション、`wrangler deploy` |
-| `packs.yml` | `packs/` の変更 → 確認環境。手動 | パックを作り R2 の `packs/<id>/<版>.zip` に置き、D1 の `packs` を更新する（中身が同じなら何もしない） |
+| `deploy.yml` | `main` への push → 本番。PR → バージョン URL `pr-<番号>`。手動 → 本番かバージョン URL `staging` | SRC#Web を AOT で発行（7474/SRC のコミットごとにキャッシュ）、`dist/` を組み立て、25 MiB を超えるものを R2 の `web/` へ。本番は D1 のマイグレーションと `wrangler deploy`、バージョン URL は `wrangler versions upload --preview-alias` |
+| `packs.yml` | `packs/` の変更、手動 | パックを作り R2 の `packs/<id>/<版>.zip` に置き、D1 の `packs` を更新する（中身が同じなら何もしない） |
 
 ## 運営
 

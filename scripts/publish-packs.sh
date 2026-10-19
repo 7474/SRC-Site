@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # パックを作り、R2 に置き、D1 の packs を更新する（.github/workflows/packs.yml から呼ぶ）
-#   ENV=staging|production SRC_DIR=<7474/SRC の checkout> scripts/publish-packs.sh [id ...]
+#   SRC_DIR=<7474/SRC の checkout> scripts/publish-packs.sh [id ...]
 # 要るもの: CLOUDFLARE_API_TOKEN・CLOUDFLARE_ACCOUNT_ID、python3、jq、npx wrangler
 # 取り下げたファイル（D1 の takedowns の pack_file）は zip から除く
 set -euo pipefail
 cd "$(dirname "$0")/.."
-env="${ENV:?ENV に staging か production を指定する}"
-bucket=$(case "$env" in staging) echo src-site-staging ;; production) echo src-site ;; *) exit 1 ;; esac)
+env=production
+bucket=src-site
 out=out/packs
 mkdir -p "$out"
 

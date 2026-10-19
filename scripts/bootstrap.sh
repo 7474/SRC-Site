@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
 # Cloudflare に環境（D1・R2・Queues）を作り、D1 の ID を wrangler.jsonc に入れる。初めの 1 回だけ（docs/operations.md）
-#   ENV=staging ORIGIN=https://src-site-staging.<サブドメイン>.workers.dev scripts/bootstrap.sh
-#   ENV=production ORIGIN=https://src.koudenpa.net scripts/bootstrap.sh
+#   scripts/bootstrap.sh
 # 要るもの: npx wrangler login 済みか CLOUDFLARE_API_TOKEN・CLOUDFLARE_ACCOUNT_ID、jq
 # 作り済みのものはそのまま使う
 set -euo pipefail
 cd "$(dirname "$0")/.."
-env="${ENV:?ENV に staging か production を指定する}"
-origin="${ORIGIN:?ORIGIN にサイトの origin（https://...）を指定する}"
-name=$(case "$env" in staging) echo src-site-staging ;; production) echo src-site ;; *) echo "ENV は staging か production" >&2; exit 1 ;; esac)
+env=production
+name=src-site
+origin=https://src.koudenpa.net
 
 w() { npx wrangler "$@"; }
 
@@ -27,7 +26,8 @@ grep -q "\"database_name\": \"$name\", \"database_id\": \"$id\"" wrangler.jsonc
 w r2 bucket create "$name" 2>/dev/null || echo "R2 $name: 作り済み"
 cors=$(mktemp)
 trap 'rm -f "$cors"' EXIT
-jq -n --arg origin "$origin" '{rules: [{allowed: {origins: [$origin], methods: ["PUT"], headers: ["content-type"]}, exposeHeaders: ["ETag"], maxAgeSeconds: 3600}]}' > "$cors"
+# 本番と、確認に使うバージョン URL（別名 staging。docs/operations.md の「配信」）
+jq -n --arg origin "$origin" --arg preview "https://staging-$name.koudenpa.workers.dev" '{rules: [{allowed: {origins: [$origin, $preview], methods: ["PUT"], headers: ["content-type"]}, exposeHeaders: ["ETag"], maxAgeSeconds: 3600}]}' > "$cors"
 w r2 bucket cors set "$name" --file "$cors" --force
 
 # Queues（zip の検査）
@@ -43,5 +43,5 @@ cat <<EOF
   2. Secret を入れる: npx wrangler secret put <名前> --env $env
      GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET SESSION_SECRET R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY
      （任意）TURNSTILE_SITE_KEY TURNSTILE_SECRET
-  3. Google の OAuth クライアントのリダイレクト URI に $origin/auth/callback を加える
+  3. Google の OAuth クライアントのリダイレクト URI に $origin/auth/callback と https://staging-$name.koudenpa.workers.dev/auth/callback を加える
 EOF
