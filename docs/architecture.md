@@ -187,8 +187,7 @@ CREATE TABLE packs (
   priority    INTEGER NOT NULL DEFAULT 0, -- 重ねる順（大きいほど後＝優先）
   version     TEXT NOT NULL,              -- zip の版（sha256 の先頭など）
   r2_key      TEXT NOT NULL,
-  size        INTEGER NOT NULL,
-  provides    TEXT                        -- 目次（JSON。参照の照合に使う）
+  size        INTEGER NOT NULL
 );
 
 -- 取り下げ（パックのファイル単位、シナリオの版単位）

@@ -19,10 +19,8 @@ python3 -I scripts/packs.py build --out "$out" --exclude-file out/takedowns.txt 
 sql=out/packs.sql
 : > "$sql"
 for meta in "$out"/*.json; do
-  case "$meta" in *.index.json) continue ;; esac
   id=$(jq -r .id "$meta")
   key=$(jq -r .r2_key "$meta")
-  index=$(jq -r .provides "$meta")
   current=$(d1 --command "SELECT version FROM packs WHERE id = '$id'" | jq -r '.[0].results[0].version // empty')
   if [ "$current" = "$(jq -r .version "$meta")" ]; then
     echo "$id: 変わりなし"
@@ -30,13 +28,12 @@ for meta in "$out"/*.json; do
   fi
   # 版ごとに別のキーに置く。古い版は消さない（docs/architecture.md の「R2」）
   npx wrangler r2 object put "$bucket/$key" --remote --file "$out/$id.zip" --content-type application/zip
-  npx wrangler r2 object put "$bucket/$index" --remote --file "$out/$id.index.json" --content-type application/json
   # SQL の文字列は jq の @sh ではなく '' の二重化で埋める
   jq -r --argjson now "$(date +%s)000" '
     def q: if . == null then "NULL" elif type == "number" then tostring else "'"'"'" + (tostring | gsub("'"'"'"; "'"'"''"'"'")) + "'"'"'" end;
-    "INSERT INTO packs (id, title, description, source_name, source_url, license, is_default, priority, root, version, r2_key, size, provides, withdrawn, updated_at) VALUES ("
-    + ([.id, .title, .description, .source_name, .source_url, .license, .is_default, .priority, .root, .version, .r2_key, .size, .provides] | map(q) | join(", "))
-    + ", 0, \($now)) ON CONFLICT(id) DO UPDATE SET title = excluded.title, description = excluded.description, source_name = excluded.source_name, source_url = excluded.source_url, license = excluded.license, is_default = excluded.is_default, priority = excluded.priority, root = excluded.root, version = excluded.version, r2_key = excluded.r2_key, size = excluded.size, provides = excluded.provides, updated_at = excluded.updated_at;"
+    "INSERT INTO packs (id, title, description, source_name, source_url, license, is_default, priority, root, version, r2_key, size, withdrawn, updated_at) VALUES ("
+    + ([.id, .title, .description, .source_name, .source_url, .license, .is_default, .priority, .root, .version, .r2_key, .size] | map(q) | join(", "))
+    + ", 0, \($now)) ON CONFLICT(id) DO UPDATE SET title = excluded.title, description = excluded.description, source_name = excluded.source_name, source_url = excluded.source_url, license = excluded.license, is_default = excluded.is_default, priority = excluded.priority, root = excluded.root, version = excluded.version, r2_key = excluded.r2_key, size = excluded.size, updated_at = excluded.updated_at;"
   ' "$meta" >> "$sql"
   echo "$id: $(jq -r .version "$meta") を置いた"
 done

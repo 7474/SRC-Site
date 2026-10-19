@@ -74,7 +74,6 @@ CREATE TABLE packs (
   version     TEXT NOT NULL,
   r2_key      TEXT NOT NULL,
   size        INTEGER NOT NULL,
-  provides    TEXT,
   withdrawn   INTEGER NOT NULL DEFAULT 0,
   updated_at  INTEGER NOT NULL
 );

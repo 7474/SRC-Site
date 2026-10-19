@@ -3,7 +3,7 @@
 
     python3 -I scripts/packs.py build [--out out/packs] [--exclude-file F] [--cache DIR] [id ...]
 
-- 出力: <out>/<id>.zip、<out>/<id>.json（D1 の packs の行に入れる値）、<out>/<id>.index.json（目次）
+- 出力: <out>/<id>.zip と <out>/<id>.json（D1 の packs の行に入れる値）
 - 版（version）は zip の中身（パスと内容）の sha256 の先頭 12 桁。中身が同じなら版も同じ
 - --exclude-file: 取り下げたファイル（takedowns の pack_file）。1 行に「<id>:<パス>」
 - 元の配布物の種類（source.type）
@@ -180,13 +180,8 @@ def build(args: argparse.Namespace) -> None:
             "version": version,
             "r2_key": f"packs/{d['id']}/{version}.zip",
             "size": zip_path.stat().st_size,
-            # 目次は R2 の packs/<id>/<version>.json に置く（D1 の SQL は 1 文 100 KB まで）
-            "provides": f"packs/{d['id']}/{version}.json",
         }
         (out_dir / f"{d['id']}.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
-        # 目次（小文字のパス）。足りないアセットの照合に使う
-        (out_dir / f"{d['id']}.index.json").write_text(
-            json.dumps(sorted({p.lower() for p in files}), ensure_ascii=False), encoding="utf-8")
         print(f"{d['id']}: {len(files)} files, {meta['size']} bytes, version {version}"
               + (f", {taken} taken down" if taken else ""))
 
