@@ -21,6 +21,27 @@ export type Bindings = {
   DEV_LOGIN?: string;
 };
 
+// 設定前の Secret に入れておく値。この値の Secret は無いものとして扱う（docs/operations.md）
+export const PLACEHOLDER = 'PLACEHOLDER';
+const SECRETS = [
+  'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'SESSION_SECRET', 'R2_ACCOUNT_ID', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY',
+  'TURNSTILE_SITE_KEY', 'TURNSTILE_SECRET',
+] as const;
+
+/** 仮の値（PLACEHOLDER）の Secret を除いた環境 */
+export function withoutPlaceholders(env: Bindings): Bindings {
+  if (!SECRETS.some(k => env[k] === PLACEHOLDER)) {
+    return env;
+  }
+  const result = { ...env };
+  for (const k of SECRETS) {
+    if (result[k] === PLACEHOLDER) {
+      delete result[k];
+    }
+  }
+  return result;
+}
+
 export type InspectMessage = { versionId: number };
 
 export type User = {

@@ -78,7 +78,7 @@ src-site/
 | `GET /s/:slug` | シナリオの詳細（説明・版・文書・必要なパック・足りない素材・通報） | 不要 | 同上 |
 | `GET /u/:handle` | 投稿者の頁 | 不要 | 同上 |
 | `GET /packs/:id` | 共有パックの頁（出典・条件・取り下げの記録） | 不要 | 同上 |
-| `GET /submit` `/s/:slug/edit` | 投稿・編集 | 要 | `Cache-Control: private` |
+| `GET /s/submit` `/s/:slug/edit` | 投稿・編集 | 要 | `Cache-Control: private` |
 | `GET /admin/*` | 運営（通報・取り下げ・停止） | 運営 | 同上 |
 | `GET /play/*` | SRC#Web | 不要 | `Cross-Origin-Opener-Policy: same-origin`、`Cross-Origin-Embedder-Policy: require-corp` |
 | `GET /api/catalog.json` | 公開中のシナリオとパックのカタログ | 不要 | `Cross-Origin-Resource-Policy: same-origin`、`Cache-Control: public, max-age=60` |
@@ -99,7 +99,7 @@ sequenceDiagram
   participant B as ブラウザ
   participant W as Worker
   participant G as Google
-  B->>W: GET /auth/login?next=/submit
+  B->>W: GET /auth/login?next=/s/submit
   W->>W: state・nonce・PKCE の verifier を作り、短命の Cookie（署名付き）に入れる
   W-->>B: 302 accounts.google.com/o/oauth2/v2/auth<br/>scope=openid email profile, code_challenge(S256), state, nonce
   B->>G: ログイン・同意

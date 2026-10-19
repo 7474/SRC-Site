@@ -191,7 +191,7 @@ export function MePage(props: { handle: string; termsAccepted: boolean; items: (
       </section>
       <section>
         <h2>投稿したシナリオ</h2>
-        <p><a class="button" href="/submit">新しく投稿する</a></p>
+        <p><a class="button" href="/s/submit">新しく投稿する</a></p>
         {props.items.length === 0 ? <p class="muted">まだありません。</p> : (
           <ul class="scenario-list">
             {props.items.map(s => (
@@ -247,7 +247,7 @@ export function NewScenarioPage(props: { v: ScenarioForm; error?: string }) {
       <h1>シナリオを投稿する</h1>
       <p>まずシナリオの情報を登録し、次の画面で zip を上げます。投稿したものはすぐに公開されます（運営の確認はありません）。内容の責任は投稿者にあります（<a href="/about/terms">利用規約</a>）。</p>
       {props.error && <Notice kind="error">{props.error}</Notice>}
-      <form method="post" action="/submit" class="form">
+      <form method="post" action="/s/submit" class="form">
         <ScenarioFields v={props.v} isNew={true} />
         <button type="submit">次へ</button>
       </form>

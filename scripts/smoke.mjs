@@ -76,13 +76,13 @@ const admin = new Agent();
 
 let res = await alice.req('/auth/dev?as=alice-' + slug + '&next=/me');
 assert.equal(res.status, 302);
-res = await alice.req('/submit');
+res = await alice.req('/s/submit');
 assert.equal(res.headers.get('Location'), '/me', '規約に同意するまで投稿できない');
 res = await alice.form('/me', { handle: 'alice-' + slug.slice(-6), terms: '1' });
 assert.equal(res.status, 302);
 step('ログインと規約への同意');
 
-res = await alice.form('/submit', { slug, title: 'スモーク ' + basename(folder), author: '作者', description: '説明', license: 'CC0', rating: 'general', tags: 'テスト 短編', visibility: 'public' });
+res = await alice.form('/s/submit', { slug, title: 'スモーク ' + basename(folder), author: '作者', description: '説明', license: 'CC0', rating: 'general', tags: 'テスト 短編', visibility: 'public' });
 assert.equal(res.headers.get('Location'), `/s/${slug}/edit`);
 step('シナリオの登録');
 

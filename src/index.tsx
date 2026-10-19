@@ -1,6 +1,6 @@
 // SRC-Site の Worker（docs/architecture.md）
 import { Hono } from 'hono';
-import type { AppEnv, Bindings, InspectMessage } from './env';
+import { withoutPlaceholders, type AppEnv, type Bindings, type InspectMessage } from './env';
 import { loadUser } from './lib/session';
 import { inspectVersion, sweep } from './lib/inspector';
 import { serveObject } from './lib/serve';
@@ -87,14 +87,15 @@ app.onError((err, c) => {
 });
 
 export default {
-  fetch: app.fetch,
+  fetch: (request: Request, env: Bindings, ctx: ExecutionContext) => app.fetch(request, withoutPlaceholders(env), ctx),
   async queue(batch: MessageBatch<InspectMessage>, env: Bindings) {
+    env = withoutPlaceholders(env);
     for (const message of batch.messages) {
       await inspectVersion(env, message.body.versionId);
       message.ack();
     }
   },
   async scheduled(_event: ScheduledController, env: Bindings) {
-    await sweep(env);
+    await sweep(withoutPlaceholders(env));
   },
 } satisfies ExportedHandler<Bindings, InspectMessage>;

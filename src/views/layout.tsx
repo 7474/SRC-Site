@@ -23,7 +23,7 @@ export function Layout(props: { title: string; siteName: string; user: User | nu
             <a href="/play/">Web 版</a>
             {user ? (
               <>
-                <a href="/submit">投稿</a>
+                <a href="/s/submit">投稿</a>
                 <a href="/me">{user.handle}</a>
                 {user.role === 'admin' && <a href="/admin">運営</a>}
               </>

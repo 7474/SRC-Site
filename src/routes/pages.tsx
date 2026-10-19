@@ -8,7 +8,7 @@ import { Rights, Terms } from '../views/about';
 import { ageConfirmed, canEdit, canView, getScenario, LIST_SELECT, requireUser, showR18 } from './common';
 import { verifyTurnstile } from '../lib/turnstile';
 import { canPresign } from '../lib/presign';
-import { HANDLE_PATTERN, now, parseJsonArray, RATINGS, SLUG_PATTERN } from '../lib/util';
+import { HANDLE_PATTERN, now, parseJsonArray, RATINGS, RESERVED_SLUGS, SLUG_PATTERN } from '../lib/util';
 import type { Child } from 'hono/jsx';
 
 export const pages = new Hono<AppEnv>();
@@ -54,6 +54,38 @@ pages.post('/prefs/age', async c => {
   setCookie(c, 'age', rating, { path: '/', maxAge: 365 * 24 * 3600, sameSite: 'Lax' });
   const next = typeof form.next === 'string' && form.next.startsWith('/') && !form.next.startsWith('//') ? form.next : '/';
   return c.redirect(next);
+});
+
+// /s/:slug より先に置く（submit はシナリオの slug に使えない）
+pages.get('/s/submit', requireUser, c => {
+  if (!c.get('user')!.terms_accepted_at) {
+    return c.redirect('/me');
+  }
+  return render(c, '投稿', <NewScenarioPage v={EMPTY_FORM} />);
+});
+
+pages.post('/s/submit', requireUser, async c => {
+  const user = c.get('user')!;
+  if (!user.terms_accepted_at) {
+    return c.redirect('/me');
+  }
+  const v = readScenarioForm(await c.req.parseBody());
+  const fail = (error: string) => render(c, '投稿', <NewScenarioPage v={v} error={error} />, 400);
+  if (!SLUG_PATTERN.test(v.slug) || RESERVED_SLUGS.has(v.slug)) {
+    return fail('ID は英小文字・数字・- の 3〜40 文字にしてください（先頭と末尾は英数字。submit は使えません）。');
+  }
+  if (!v.title) {
+    return fail('題名を入れてください。');
+  }
+  if (await c.env.DB.prepare('SELECT 1 FROM scenarios WHERE slug = ?').bind(v.slug).first()) {
+    return fail('その ID は使われています。');
+  }
+  const t = now();
+  await c.env.DB.prepare(
+    `INSERT INTO scenarios (slug, owner_id, title, author, description, license, rating, tags, visibility, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).bind(v.slug, user.id, v.title, v.author || null, v.description || null, v.license || null, v.rating, tagsJson(v.tags), v.visibility, t, t).run();
+  return c.redirect(`/s/${v.slug}/edit`);
 });
 
 pages.get('/s/:slug', async c => {
@@ -176,37 +208,6 @@ function readScenarioForm(form: Record<string, unknown>): ScenarioForm {
 function tagsJson(tags: string): string {
   return JSON.stringify([...new Set(tags.split(/\s+/).filter(Boolean).map(t => t.slice(0, 30)))].slice(0, 10));
 }
-
-pages.get('/submit', requireUser, c => {
-  if (!c.get('user')!.terms_accepted_at) {
-    return c.redirect('/me');
-  }
-  return render(c, '投稿', <NewScenarioPage v={EMPTY_FORM} />);
-});
-
-pages.post('/submit', requireUser, async c => {
-  const user = c.get('user')!;
-  if (!user.terms_accepted_at) {
-    return c.redirect('/me');
-  }
-  const v = readScenarioForm(await c.req.parseBody());
-  const fail = (error: string) => render(c, '投稿', <NewScenarioPage v={v} error={error} />, 400);
-  if (!SLUG_PATTERN.test(v.slug)) {
-    return fail('ID は英小文字・数字・- の 3〜40 文字にしてください（先頭と末尾は英数字）。');
-  }
-  if (!v.title) {
-    return fail('題名を入れてください。');
-  }
-  if (await c.env.DB.prepare('SELECT 1 FROM scenarios WHERE slug = ?').bind(v.slug).first()) {
-    return fail('その ID は使われています。');
-  }
-  const t = now();
-  await c.env.DB.prepare(
-    `INSERT INTO scenarios (slug, owner_id, title, author, description, license, rating, tags, visibility, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).bind(v.slug, user.id, v.title, v.author || null, v.description || null, v.license || null, v.rating, tagsJson(v.tags), v.visibility, t, t).run();
-  return c.redirect(`/s/${v.slug}/edit`);
-});
 
 async function editPage(c: Context<AppEnv>, slug: string, extra: { error?: string; saved?: boolean; form?: ScenarioForm } = {}) {
   const s = await getScenario(c, slug);
