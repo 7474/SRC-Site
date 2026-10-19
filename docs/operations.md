@@ -38,6 +38,7 @@
 | `SESSION_SECRET` | セッションと OIDC の状態の署名（`openssl rand -base64 32`） | ログインできない |
 | `R2_ACCOUNT_ID`・`R2_ACCESS_KEY_ID`・`R2_SECRET_ACCESS_KEY` | 署名付き URL（ブラウザから R2 へ直接 PUT） | Worker を通して PUT する（100 MB まで） |
 | `TURNSTILE_SITE_KEY`・`TURNSTILE_SECRET` | 版の作成・通報のボット対策 | 確かめない |
+| `GITHUB_TOKEN` | 通報を GitHub の Issue にする。`REPORT_REPO` の repo だけに絞った fine-grained personal access token（権限は Issues: Read and write と Metadata: Read） | Issue を作らない（運営の画面だけで見る） |
 
 ### GitHub Actions
 
@@ -67,6 +68,15 @@ npx wrangler d1 execute DB --env production --remote \
 ```
 
 運営の画面は `/admin`。
+
+### 通報
+
+- 通報は D1 に残し、同時に `REPORT_REPO`（`wrangler.jsonc` の `vars`。今は `7474/SRC-Site`）に Issue を作る。題は `[通報][サイト名] 理由: シナリオの題`
+- repo が公開なら、Issue にはシナリオ・理由・運営の画面への案内だけを書く。詳細と連絡先（通報者の個人の情報が載りうる）は運営の画面（`/admin`）で見る
+- repo が非公開なら、詳細と連絡先も Issue に書く。通報を GitHub だけで見たいときは、非公開の repo を作って `REPORT_REPO` をそれにする
+- 運営の画面の通報には Issue へのリンクが付く。対応したら Issue を閉じ、運営の画面で「対応済みにする」（両者は連動しない）
+- 同じシナリオの未対応の通報に 24 時間以内の Issue があれば、新しい Issue は作らずそれに紐づける（Issue を荒らされないため）
+- 運営の画面から Issue は作らない。GitHub への送信に失敗しても通報は D1 に残る
 
 ### 取り下げ
 

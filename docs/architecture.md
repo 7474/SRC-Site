@@ -267,7 +267,8 @@ CREATE TABLE reports (
   detail      TEXT,
   contact     TEXT,
   state       TEXT NOT NULL DEFAULT 'open',
-  created_at  INTEGER NOT NULL
+  created_at  INTEGER NOT NULL,
+  github_issue TEXT                       -- 通報から作った GitHub の Issue
 );
 
 -- 遊んだ・ダウンロードした回数（人気の並びに使う）
@@ -398,7 +399,7 @@ flowchart TB
 
 | 機能 | 内容 |
 |---|---|
-| 通報 | シナリオ・パックの頁の「通報」。理由（権利・区分・有害なファイル・その他）と詳細、連絡先（任意）。Turnstile を通す |
+| 通報 | シナリオの頁の「通報」。理由（権利・成人向けの内容・有害なファイル・その他）と詳細、連絡先（任意）。Turnstile を通す。GitHub の Issue にして運営に知らせる（docs/operations.md の「通報」） |
 | 運営の画面 | 通報の一覧、シナリオの非公開（`hidden`）、版の取り下げ（`withdrawn`）、利用者の停止、パックのファイルの取り下げ |
 | 取り下げの手順 | 権利者の申し出 → 非公開にする（即時）→ 投稿者に連絡（ポータル上の通知）→ 投稿者が直せば再公開。SRC 公式サイトのリンク集の対応に倣う |
 | 窓口 | `/about/rights`（申し出の方法、対応の手順、取り下げた記録の公開） |
@@ -412,7 +413,7 @@ flowchart TB
 |---|---|
 | 投稿 | 1 人 1 日 10 版、合計 5 GB まで（D1 で数える）。版の作成に Turnstile |
 | API 全般 | [Rate Limiting](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/) で、ログインしている人は `user:<id>`、していない人はパスごとに 60 秒あたりの回数を決める（数えるのは拠点ごとの近似） |
-| 通報 | Turnstile、同じ相手への通報は 1 日 1 回 |
+| 通報 | Turnstile、書き込みの回数の制限。GitHub の Issue は同じシナリオにつき 24 時間に 1 つ（ほかの通報はその Issue に紐づける） |
 | ファイル | 検査の規則（上）。SRC#Web は .eve をブラウザの中で動かすだけで、同梱の HTML はスクリプトを動かさない枠で出す |
 
 ## SRC#Web の変更（7474/SRC）

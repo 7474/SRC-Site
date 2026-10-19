@@ -1,6 +1,7 @@
 import { formatDate } from '../lib/util';
+import { REPORT_REASONS } from '../lib/github';
 
-export type ReportItem = { id: number; reason: string; detail: string | null; contact: string | null; created_at: number; slug: string | null; title: string | null; pack_id: string | null; hidden: number | null };
+export type ReportItem = { id: number; reason: string; detail: string | null; contact: string | null; created_at: number; github_issue: string | null; slug: string | null; title: string | null; pack_id: string | null; hidden: number | null };
 export type HiddenItem = { slug: string; title: string; hidden_reason: string | null };
 export type UserItem = { id: number; handle: string; role: string; suspended: number; created_at: number };
 
@@ -19,7 +20,7 @@ export function AdminPage(props: { reports: ReportItem[]; users: UserItem[]; hid
                 <tr>
                   <td>{formatDate(r.created_at)}</td>
                   <td>{r.slug ? <a href={`/scenarios/${r.slug}`}>{r.title}</a> : r.pack_id ? <a href={`/packs/${r.pack_id}`}>{r.pack_id}</a> : '（削除済み）'}</td>
-                  <td>{r.reason}</td>
+                  <td>{REPORT_REASONS[r.reason] ?? r.reason}{r.github_issue && <> <a href={r.github_issue}>Issue</a></>}</td>
                   <td class="pre">{r.detail}{r.contact && `\n連絡先: ${r.contact}`}</td>
                   <td>
                     {r.slug && (

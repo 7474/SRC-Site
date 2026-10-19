@@ -12,7 +12,7 @@ admin.use('*', requireAdmin);
 
 admin.get('/', async c => {
   const reports = (await c.env.DB.prepare(
-    `SELECT r.id, r.reason, r.detail, r.contact, r.created_at, r.pack_id, s.slug, s.title, s.hidden
+    `SELECT r.id, r.reason, r.detail, r.contact, r.created_at, r.pack_id, r.github_issue, s.slug, s.title, s.hidden
        FROM reports r LEFT JOIN scenarios s ON s.id = r.scenario_id
       WHERE r.state = 'open' ORDER BY r.created_at DESC LIMIT 100`,
   ).all<ReportItem>()).results;
