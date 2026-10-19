@@ -1,9 +1,9 @@
 import type { Child } from 'hono/jsx';
-import { RatingBadge, Notice } from './layout';
-import { formatDate, formatSize, RATING_LABELS, RATINGS } from '../lib/util';
+import { Notice } from './layout';
+import { formatDate, formatSize } from '../lib/util';
 
 export type ListItem = {
-  slug: string; title: string; author: string | null; rating: string; handle: string; updated_at: number;
+  slug: string; title: string; author: string | null; handle: string; updated_at: number;
   size: number | null; description: string | null; plays: number | null;
 };
 
@@ -15,7 +15,7 @@ export function ScenarioList(props: { items: ListItem[]; empty?: string }) {
     <ul class="scenario-list">
       {props.items.map(s => (
         <li>
-          <a class="title" href={`/scenarios/${s.slug}`}>{s.title}</a> <RatingBadge rating={s.rating} />
+          <a class="title" href={`/scenarios/${s.slug}`}>{s.title}</a>
           <div class="meta">
             {s.author ?? s.handle} ・ {formatDate(s.updated_at)}{s.size != null && <> ・ {formatSize(s.size)}</>}
             {s.plays ? <> ・ {s.plays} 回プレイ</> : null}
@@ -27,7 +27,7 @@ export function ScenarioList(props: { items: ListItem[]; empty?: string }) {
   );
 }
 
-export function Home(props: { q: string; latest: ListItem[]; popular: ListItem[]; showR18: boolean }) {
+export function Home(props: { q: string; latest: ListItem[]; popular: ListItem[] }) {
   return (
     <>
       {props.q ? (
@@ -50,27 +50,7 @@ export function Home(props: { q: string; latest: ListItem[]; popular: ListItem[]
           </section>
         </>
       )}
-      <form method="post" action="/prefs/r18" class="inline">
-        <input type="hidden" name="show" value={props.showR18 ? '0' : '1'} />
-        <button type="submit" class="link">{props.showR18 ? 'R18 のシナリオを一覧に出さない' : 'R18 のシナリオも一覧に出す（18 歳以上）'}</button>
-      </form>
     </>
-  );
-}
-
-export function AgeGate(props: { title: string; rating: string; next: string }) {
-  const label = RATING_LABELS[props.rating as keyof typeof RATING_LABELS];
-  const age = props.rating === 'r18' ? 18 : 15;
-  return (
-    <section class="gate">
-      <h1>{props.title}</h1>
-      <p>このシナリオは {label}（{age} 歳以上）向けと投稿者が区分しています。あなたは {age} 歳以上ですか？</p>
-      <form method="post" action="/prefs/age">
-        <input type="hidden" name="rating" value={props.rating} />
-        <input type="hidden" name="next" value={props.next} />
-        <button type="submit">はい</button> <a class="button" href="/">いいえ</a>
-      </form>
-    </section>
   );
 }
 
@@ -78,7 +58,7 @@ export type VersionItem = { id: number; number: number; state: string; size: num
 export type PackItem = { id: string; title: string; source_name: string };
 
 export function ScenarioPage(props: {
-  s: { slug: string; title: string; author: string | null; description: string | null; license: string | null; rating: string; handle: string; hidden: number; hidden_reason: string | null; visibility: string; tags: string[] };
+  s: { slug: string; title: string; author: string | null; description: string | null; license: string | null; handle: string; hidden: number; hidden_reason: string | null; visibility: string; tags: string[] };
   latest: (VersionItem & { root: string | null; eve: string | null; manifest: { files: number; totalSize: number; documents: string[] } | null }) | null;
   versions: VersionItem[];
   packs: PackItem[];
@@ -89,7 +69,7 @@ export function ScenarioPage(props: {
   const { s, latest } = props;
   return (
     <article class="scenario">
-      <h1>{s.title} <RatingBadge rating={s.rating} /></h1>
+      <h1>{s.title}</h1>
       <p class="meta">作者: {s.author ?? s.handle}（投稿: <a href={`/users/${s.handle}`}>{s.handle}</a>）{s.visibility === 'unlisted' && ' ・ 限定公開'}</p>
       {s.hidden ? <Notice kind="error">運営により公開を止めています。{s.hidden_reason}</Notice> : null}
       {props.canEdit && <p><a class="button" href={`/my/scenarios/${s.slug}`}>編集・新しい版を上げる</a></p>}
@@ -133,7 +113,7 @@ export function ScenarioPage(props: {
             <label>理由
               <select name="reason">
                 <option value="rights">権利の侵害（自分の作品・素材が無断で使われている など）</option>
-                <option value="rating">年齢の区分が違う</option>
+                <option value="adult">成人向けの内容</option>
                 <option value="malware">有害なファイル</option>
                 <option value="other">その他</option>
               </select>
@@ -196,9 +176,9 @@ export function MePage(props: { handle: string; termsAccepted: boolean; items: (
           <ul class="scenario-list">
             {props.items.map(s => (
               <li>
-                <a class="title" href={`/scenarios/${s.slug}`}>{s.title}</a> <RatingBadge rating={s.rating} />
+                <a class="title" href={`/scenarios/${s.slug}`}>{s.title}</a>
                 {s.visibility !== 'public' && <span class="badge">{s.visibility === 'unlisted' ? '限定公開' : '非公開'}</span>}
-                {s.hidden ? <span class="badge rating-r18">運営が停止</span> : null}
+                {s.hidden ? <span class="badge stopped">運営が停止</span> : null}
                 {' '}<a href={`/my/scenarios/${s.slug}`}>編集</a>
               </li>
             ))}
@@ -209,7 +189,7 @@ export function MePage(props: { handle: string; termsAccepted: boolean; items: (
   );
 }
 
-export type ScenarioForm = { slug: string; title: string; author: string; description: string; license: string; rating: string; tags: string; visibility: string };
+export type ScenarioForm = { slug: string; title: string; author: string; description: string; license: string; tags: string; visibility: string };
 
 export function ScenarioFields(props: { v: ScenarioForm; isNew: boolean }) {
   const v = props.v;
@@ -225,11 +205,6 @@ export function ScenarioFields(props: { v: ScenarioForm; isNew: boolean }) {
       <label>説明<textarea name="description" rows={6} maxlength={5000}>{v.description}</textarea></label>
       <label>ライセンス・配布の条件（使った素材の出典もここに）<textarea name="license" rows={4} maxlength={5000}>{v.license}</textarea></label>
       <label>タグ（空白区切り）<input name="tags" value={v.tags} maxlength={200} /></label>
-      <label>年齢の区分
-        <select name="rating">
-          {RATINGS.map(r => <option value={r} selected={v.rating === r}>{RATING_LABELS[r]}</option>)}
-        </select>
-      </label>
       <label>公開
         <select name="visibility">
           <option value="public" selected={v.visibility === 'public'}>公開</option>

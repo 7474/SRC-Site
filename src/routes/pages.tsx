@@ -1,14 +1,13 @@
 // ポータルの画面
 import { Hono, type Context } from 'hono';
-import { setCookie } from 'hono/cookie';
 import type { AppEnv } from '../env';
 import { Layout, Notice } from '../views/layout';
-import { AgeGate, EditPage, Home, MePage, NewScenarioPage, PackPage, PacksPage, ScenarioPage, Simple, UserPage, type ListItem, type ScenarioForm } from '../views/pages';
+import { EditPage, Home, MePage, NewScenarioPage, PackPage, PacksPage, ScenarioPage, Simple, UserPage, type ListItem, type ScenarioForm } from '../views/pages';
 import { Rights, Terms } from '../views/about';
-import { ageConfirmed, canEdit, canView, getScenario, LIST_SELECT, requireUser, showR18 } from './common';
+import { canEdit, canView, getScenario, LIST_SELECT, requireUser } from './common';
 import { verifyTurnstile } from '../lib/turnstile';
 import { canPresign } from '../lib/presign';
-import { HANDLE_PATTERN, now, parseJsonArray, RATINGS, SLUG_PATTERN } from '../lib/util';
+import { HANDLE_PATTERN, now, parseJsonArray, SLUG_PATTERN } from '../lib/util';
 import type { Child } from 'hono/jsx';
 
 export const pages = new Hono<AppEnv>();
@@ -24,8 +23,7 @@ function notFound(c: Context<AppEnv>) {
 
 pages.get('/', async c => {
   const q = (c.req.query('q') ?? '').trim().slice(0, 50);
-  const r18 = showR18(c);
-  const base = `${LIST_SELECT} WHERE s.hidden = 0 AND s.visibility = 'public' AND s.latest_version IS NOT NULL ${r18 ? '' : "AND s.rating != 'r18'"}`;
+  const base = `${LIST_SELECT} WHERE s.hidden = 0 AND s.visibility = 'public' AND s.latest_version IS NOT NULL`;
   let latest: ListItem[];
   let popular: ListItem[] = [];
   if (q) {
@@ -36,24 +34,7 @@ pages.get('/', async c => {
     latest = (await c.env.DB.prepare(`${base} ORDER BY s.updated_at DESC LIMIT 30`).all<ListItem>()).results;
     popular = (await c.env.DB.prepare(`${base} AND plays > 0 ORDER BY plays DESC LIMIT 10`).all<ListItem>()).results;
   }
-  return render(c, c.env.SITE_NAME, <Home q={q} latest={latest} popular={popular} showR18={r18} />);
-});
-
-pages.post('/prefs/r18', async c => {
-  const form = await c.req.parseBody();
-  setCookie(c, 'show_r18', form.show === '1' ? '1' : '0', { path: '/', maxAge: 365 * 24 * 3600, sameSite: 'Lax' });
-  if (form.show === '1') {
-    setCookie(c, 'age', 'r18', { path: '/', maxAge: 365 * 24 * 3600, sameSite: 'Lax' });
-  }
-  return c.redirect('/');
-});
-
-pages.post('/prefs/age', async c => {
-  const form = await c.req.parseBody();
-  const rating = form.rating === 'r18' ? 'r18' : 'r15';
-  setCookie(c, 'age', rating, { path: '/', maxAge: 365 * 24 * 3600, sameSite: 'Lax' });
-  const next = typeof form.next === 'string' && form.next.startsWith('/') && !form.next.startsWith('//') ? form.next : '/';
-  return c.redirect(next);
+  return render(c, c.env.SITE_NAME, <Home q={q} latest={latest} popular={popular} />);
 });
 
 pages.get('/my/scenarios/new', requireUser, c => {
@@ -81,9 +62,9 @@ pages.post('/my/scenarios/new', requireUser, async c => {
   }
   const t = now();
   await c.env.DB.prepare(
-    `INSERT INTO scenarios (slug, owner_id, title, author, description, license, rating, tags, visibility, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).bind(v.slug, user.id, v.title, v.author || null, v.description || null, v.license || null, v.rating, tagsJson(v.tags), v.visibility, t, t).run();
+    `INSERT INTO scenarios (slug, owner_id, title, author, description, license, tags, visibility, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).bind(v.slug, user.id, v.title, v.author || null, v.description || null, v.license || null, tagsJson(v.tags), v.visibility, t, t).run();
   return c.redirect(`/my/scenarios/${v.slug}`);
 });
 
@@ -91,9 +72,6 @@ pages.get('/scenarios/:slug', async c => {
   const s = await getScenario(c, c.req.param('slug'));
   if (!s || !canView(c, s)) {
     return notFound(c);
-  }
-  if (!ageConfirmed(c, s.rating) && !canEdit(c, s)) {
-    return render(c, s.title, <AgeGate title={s.title} rating={s.rating} next={c.req.path} />);
   }
   const versions = (await c.env.DB.prepare(
     'SELECT id, number, state, size, created_at, published_at, note, inspect_note, root, eve, manifest, requires, excludes FROM versions WHERE scenario_id = ? ORDER BY number DESC',
@@ -126,7 +104,7 @@ pages.post('/scenarios/:slug/report', async c => {
   if (!(await verifyTurnstile(c.env, form['cf-turnstile-response'] as string | undefined, c.req.header('CF-Connecting-IP')))) {
     return render(c, '通報', <Notice kind="error">確認に失敗しました。戻ってやり直してください。</Notice>, 400);
   }
-  const reason = ['rights', 'rating', 'malware', 'other'].includes(form.reason as string) ? form.reason as string : 'other';
+  const reason = ['rights', 'adult', 'malware', 'other'].includes(form.reason as string) ? form.reason as string : 'other';
   await c.env.DB.prepare('INSERT INTO reports (scenario_id, reason, detail, contact, created_at) VALUES (?, ?, ?, ?, ?)')
     .bind(s.id, reason, String(form.detail ?? '').slice(0, 2000), String(form.contact ?? '').slice(0, 200) || null, now()).run();
   return c.redirect(`/scenarios/${s.slug}?reported=1`);
@@ -188,7 +166,7 @@ pages.post('/my', requireUser, async c => {
   return c.redirect('/my?saved=1');
 });
 
-const EMPTY_FORM: ScenarioForm = { slug: '', title: '', author: '', description: '', license: '', rating: 'general', tags: '', visibility: 'public' };
+const EMPTY_FORM: ScenarioForm = { slug: '', title: '', author: '', description: '', license: '', tags: '', visibility: 'public' };
 
 function readScenarioForm(form: Record<string, unknown>): ScenarioForm {
   const text = (key: string, max: number) => String(form[key] ?? '').trim().slice(0, max);
@@ -198,7 +176,6 @@ function readScenarioForm(form: Record<string, unknown>): ScenarioForm {
     author: text('author', 100),
     description: text('description', 5000),
     license: text('license', 5000),
-    rating: RATINGS.includes(form.rating as any) ? form.rating as string : 'general',
     tags: text('tags', 200),
     visibility: ['public', 'unlisted', 'private'].includes(form.visibility as string) ? form.visibility as string : 'public',
   };
@@ -218,7 +195,7 @@ async function editPage(c: Context<AppEnv>, slug: string, extra: { error?: strin
   const packs = (await c.env.DB.prepare('SELECT id, title, is_default FROM packs WHERE withdrawn = 0 ORDER BY priority, id').all<any>()).results;
   const form = extra.form ?? {
     slug: s.slug, title: s.title, author: s.author ?? '', description: s.description ?? '', license: s.license ?? '',
-    rating: s.rating, tags: parseJsonArray(s.tags).join(' '), visibility: s.visibility,
+    tags: parseJsonArray(s.tags).join(' '), visibility: s.visibility,
   };
   return render(c, `${s.title} の編集`, (
     <EditPage slug={s.slug} v={form} versions={versions} packs={packs} error={extra.error} saved={extra.saved}
@@ -239,8 +216,8 @@ pages.post('/my/scenarios/:slug', requireUser, async c => {
     return editPage(c, s.slug, { error: '題名を入れてください。', form: v });
   }
   await c.env.DB.prepare(
-    'UPDATE scenarios SET title = ?, author = ?, description = ?, license = ?, rating = ?, tags = ?, visibility = ?, updated_at = ? WHERE id = ?',
-  ).bind(v.title, v.author || null, v.description || null, v.license || null, v.rating, tagsJson(v.tags), v.visibility, now(), s.id).run();
+    'UPDATE scenarios SET title = ?, author = ?, description = ?, license = ?, tags = ?, visibility = ?, updated_at = ? WHERE id = ?',
+  ).bind(v.title, v.author || null, v.description || null, v.license || null, tagsJson(v.tags), v.visibility, now(), s.id).run();
   return c.redirect(`/my/scenarios/${s.slug}?saved=1`);
 });
 

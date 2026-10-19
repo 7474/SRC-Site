@@ -15,15 +15,14 @@ if [ -n "${SRCWEB_DIR:-}" ]; then
   # /play/ の下に置く（https://github.com/7474/SRC/blob/master/docs/gui/web-hosting.md の「置き方」）
   sed -i 's#<base href="/" />#<base href="/play/" />#' dist/play/index.html
   grep -q '<base href="/play/" />' dist/play/index.html
-  # ポータルの外の zip は読ませない（カタログは /api/catalog.json だけ）。年齢の区分（rating）を確かめる
+  # ポータルの外の zip は読ませない（カタログは /api/catalog.json だけ）
   cat > dist/play/srcweb.json <<JSON
 {
   "title": "${SITE_TITLE:-SRC-Site}",
   "catalogs": ["/api/catalog.json"],
   "playCatalog": "/api/catalog/{id}.json",
   "allowUserArchives": true,
-  "allowUserCatalogs": false,
-  "ratingConfirm": true
+  "allowUserCatalogs": false
 }
 JSON
   # SRC#Web のエラーの収集（Mackerel のトレース）。MACKEREL_CLIENT_TOKEN があるときだけ

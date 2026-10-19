@@ -83,6 +83,3 @@ export const SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]{1,38}[a-z0-9])$/;
 /** 表示名（URL にも使う。英数字・_・-、3〜24 文字） */
 export const HANDLE_PATTERN = /^[A-Za-z0-9_-]{3,24}$/;
 
-export const RATINGS = ['general', 'r15', 'r18'] as const;
-export type Rating = typeof RATINGS[number];
-export const RATING_LABELS: Record<Rating, string> = { general: '全年齢', r15: 'R15', r18: 'R18' };

@@ -82,7 +82,7 @@ res = await alice.form('/my', { handle: 'alice-' + slug.slice(-6), terms: '1' })
 assert.equal(res.status, 302);
 step('ログインと規約への同意');
 
-res = await alice.form('/my/scenarios/new', { slug, title: 'スモーク ' + basename(folder), author: '作者', description: '説明', license: 'CC0', rating: 'general', tags: 'テスト 短編', visibility: 'public' });
+res = await alice.form('/my/scenarios/new', { slug, title: 'スモーク ' + basename(folder), author: '作者', description: '説明', license: 'CC0', tags: 'テスト 短編', visibility: 'public' });
 assert.equal(res.headers.get('Location'), `/my/scenarios/${slug}`);
 step('シナリオの登録');
 
@@ -126,17 +126,15 @@ res = await visitor.req('/?q=短編');
 assert.match(await res.text(), new RegExp(slug));
 step('一覧と検索');
 
-res = await alice.form(`/my/scenarios/${slug}`, { title: 'スモーク R18', rating: 'r18', visibility: 'public', tags: '', author: '', description: '', license: '' });
+res = await alice.form(`/my/scenarios/${slug}`, { title: 'スモーク 改題', visibility: 'public', tags: '', author: '', description: '', license: '' });
 assert.equal(res.status, 302);
 res = await visitor.req(`/scenarios/${slug}`);
-assert.match(await res.text(), /18 歳以上ですか/);
-assert.doesNotMatch(await (await visitor.req('/')).text(), new RegExp(slug), 'R18 は既定で一覧に出さない');
-res = await visitor.form('/prefs/age', { rating: 'r18', next: `/scenarios/${slug}` });
-res = await visitor.req(`/scenarios/${slug}`);
-assert.match(await res.text(), /SRC#Web で遊ぶ/);
+const page = await res.text();
+assert.match(page, /スモーク 改題/);
+assert.match(page, /SRC#Web で遊ぶ/);
 catalog = await (await visitor.req('/api/catalog.json')).json();
-assert.equal(catalog.entries.find(e => e.id === slug).rating, 'r18');
-step('年齢の区分（確かめる頁・一覧から隠す・カタログの rating）');
+assert.equal(catalog.entries.find(e => e.id === slug).rating, undefined);
+step('編集とシナリオの頁（年齢の区分は無い）');
 
 res = await fetch(base + `/scenarios/${slug}/report`, { method: 'POST', headers: { Origin: 'https://evil.example' }, body: new URLSearchParams({ reason: 'other', detail: 'x' }) });
 assert.equal(res.status, 403);

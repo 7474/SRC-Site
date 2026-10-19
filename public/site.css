@@ -8,8 +8,7 @@
   --accent: #1f5fbf;
   --accent-text: #ffffff;
   --error: #b42318;
-  --r15: #b54708;
-  --r18: #b42318;
+  --stopped: #b42318;
   color-scheme: light dark;
 }
 @media (prefers-color-scheme: dark) {
@@ -22,8 +21,7 @@
     --accent: #6ea8ff;
     --accent-text: #0b1220;
     --error: #ff8a80;
-    --r15: #ffb366;
-    --r18: #ff8a80;
+    --stopped: #ff8a80;
   }
 }
 * { box-sizing: border-box; }
@@ -54,8 +52,7 @@ section, article { margin-bottom: 16px; }
 .meta, .muted, .small { color: var(--muted); font-size: 13px; }
 .summary { margin: 4px 0 0; font-size: 14px; }
 .badge { display: inline-block; font-size: 12px; padding: 0 6px; border: 1px solid var(--line); border-radius: 4px; vertical-align: middle; }
-.rating-r15 { color: var(--r15); border-color: var(--r15); }
-.rating-r18 { color: var(--r18); border-color: var(--r18); }
+.stopped { color: var(--stopped); border-color: var(--stopped); }
 .pre { white-space: pre-wrap; }
 .tags .tag { margin-right: 8px; font-size: 13px; }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }

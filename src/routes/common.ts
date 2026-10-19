@@ -1,11 +1,10 @@
 import type { Context } from 'hono';
 import { createMiddleware } from 'hono/factory';
-import { getCookie } from 'hono/cookie';
 import type { AppEnv } from '../env';
 
 export type ScenarioRow = {
   id: number; slug: string; owner_id: number; title: string; author: string | null; description: string | null; license: string | null;
-  rating: string; tags: string; visibility: string; hidden: number; hidden_reason: string | null; latest_version: number | null;
+  tags: string; visibility: string; hidden: number; hidden_reason: string | null; latest_version: number | null;
   created_at: number; updated_at: number; handle: string;
 };
 
@@ -51,20 +50,7 @@ export const requireAdmin = createMiddleware<AppEnv>(async (c, next) => {
   await next();
 });
 
-/** 年齢の確かめ（Cookie の age。r18 は r15 も含む） */
-export function ageConfirmed(c: Context<AppEnv>, rating: string): boolean {
-  if (rating === 'general') {
-    return true;
-  }
-  const age = getCookie(c, 'age');
-  return age === 'r18' || (age === 'r15' && rating === 'r15');
-}
-
-export function showR18(c: Context<AppEnv>): boolean {
-  return getCookie(c, 'show_r18') === '1';
-}
-
 export const LIST_SELECT = `
-  SELECT s.slug, s.title, s.author, s.rating, s.description, s.updated_at, s.visibility, s.hidden, u.handle, v.size,
+  SELECT s.slug, s.title, s.author, s.description, s.updated_at, s.visibility, s.hidden, u.handle, v.size,
          (SELECT SUM(plays + downloads) FROM counters c WHERE c.scenario_id = s.id AND c.day >= date('now', '-7 day')) AS plays
     FROM scenarios s JOIN users u ON u.id = s.owner_id LEFT JOIN versions v ON v.id = s.latest_version`;

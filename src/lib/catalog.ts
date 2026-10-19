@@ -7,12 +7,12 @@ export type PackRow = {
 };
 
 export type PlayableRow = {
-  slug: string; title: string; author: string | null; license: string | null; rating: string; description: string | null;
+  slug: string; title: string; author: string | null; license: string | null; description: string | null;
   number: number; sha256: string; root: string | null; eve: string | null; requires: string; excludes: string;
 };
 
 export type CatalogEntry = {
-  id: string; title: string; kind?: 'asset'; author?: string; license?: string; description?: string; rating?: string;
+  id: string; title: string; kind?: 'asset'; author?: string; license?: string; description?: string;
   archive: string; version: string; root?: string; eve?: string; requires?: string[];
 };
 
@@ -44,7 +44,6 @@ export function scenarioEntry(row: PlayableRow, packs: PackRow[]): CatalogEntry 
   if (row.author) entry.author = row.author;
   if (row.license) entry.license = row.license;
   if (row.description) entry.description = row.description.slice(0, 200);
-  if (row.rating !== 'general') entry.rating = row.rating;
   if (row.root) entry.root = row.root;
   if (row.eve) entry.eve = row.eve;
   return entry;
@@ -67,7 +66,7 @@ export function catalog(name: string, scenarios: PlayableRow[], packs: PackRow[]
 }
 
 export const PLAYABLE_SELECT = `
-  SELECT s.slug, s.title, s.author, s.license, s.rating, s.description,
+  SELECT s.slug, s.title, s.author, s.license, s.description,
          v.number, v.sha256, v.root, v.eve, v.requires, v.excludes
     FROM scenarios s JOIN versions v ON v.id = s.latest_version
    WHERE s.hidden = 0 AND v.state = 'published'`;

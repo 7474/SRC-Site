@@ -17,12 +17,12 @@ describe('resolveRequires', () => {
 
   it('カタログはシナリオと、使うパックだけを入れる', () => {
     const row: PlayableRow = {
-      slug: 'lantern', title: 'ランタン号', author: null, license: 'CC0', rating: 'r15', description: null,
+      slug: 'lantern', title: 'ランタン号', author: null, license: 'CC0', description: null,
       number: 3, sha256: 'a'.repeat(64), root: 'lantern', eve: '01.eve', requires: '[]', excludes: '[]',
     };
     const c = catalog('Site', [row], packs);
     expect(c.entries[0]).toMatchObject({
-      id: 'lantern', archive: '/files/scenarios/lantern/3.zip', version: '3-aaaaaaaaaaaa', rating: 'r15', root: 'lantern', eve: '01.eve',
+      id: 'lantern', archive: '/files/scenarios/lantern/3.zip', version: '3-aaaaaaaaaaaa', root: 'lantern', eve: '01.eve',
       requires: ['basic', 'graphic'],
     });
     expect(c.entries.slice(1).map(e => [e.id, e.kind, e.archive])).toEqual([

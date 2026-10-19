@@ -8,7 +8,7 @@
 |---|---|
 | ログイン | Google（OpenID Connect）。他の提供元は後で足せる形にする |
 | 投稿の公開 | 運営の確認を挟まず、投稿したらすぐ公開する。内容は投稿者の自己責任 |
-| 版権作品のシナリオ | 受け付ける。検閲しない。投稿者が年齢の区分を付ける |
+| 版権作品のシナリオ | 受け付ける。検閲しない。成人向けのシナリオは当面扱わない（年齢の区分は持たない） |
 | グレーゾーンの素材 | 申し出があるまでは扱う。申し出があれば取り下げる |
 | JASRAC 管理曲 | サイトでは配らない。利用者がブラウザに追加する |
 | 汎用データの配布元への問い合わせ | 保留（グレーゾーンとして扱い、取り下げの仕組みで備える） |
@@ -89,7 +89,6 @@ src-site/
 | `/my/` | 本人の画面（設定・投稿・編集） | 要 | `private, no-store` |
 | `/admin/` | 運営の画面 | 運営 | `private, no-store` |
 | `/auth/` | ログイン | ― | ― |
-| `/prefs/` | ログインなしの好み（年齢の確認・R18 の表示）を Cookie に置く | 不要 | ― |
 | `/api/` | JSON（カタログ・投稿の API） | カタログは不要、投稿は要 | カタログは `public, max-age=60` |
 | `/files/` | zip（版を含めて不変） | 不要 | `public, max-age=31536000, immutable` |
 | `/play/` | SRC#Web（クロスオリジン分離） | 不要 | 静的アセット |
@@ -132,13 +131,12 @@ src-site/
 | `POST /admin/users/:id/suspend` `POST /admin/users/:id/unsuspend` | 利用者を止める・戻す |
 | `POST /admin/takedowns` | パック（のファイル）の取り下げを記録する |
 
-### ログイン・好み
+### ログイン
 
 | パス | 内容 |
 |---|---|
 | `GET /auth/login?next=` `GET /auth/callback` `POST /auth/logout` | Google のログイン |
 | `GET /auth/dev` | ローカル開発だけ（`DEV_LOGIN`） |
-| `POST /prefs/age` `POST /prefs/r18` | 年齢の確認、R18 を一覧に出すか |
 
 ### JSON とファイル
 
@@ -209,7 +207,6 @@ CREATE TABLE scenarios (
   author         TEXT,                    -- 作者の表記（投稿者と違ってもよい）
   description    TEXT,
   license        TEXT,                    -- 再配布の条件など、投稿者が書く
-  rating         TEXT NOT NULL DEFAULT 'general', -- 'general' | 'r15' | 'r18'
   tags           TEXT,                    -- JSON の配列
   visibility     TEXT NOT NULL DEFAULT 'public',  -- 'public' | 'unlisted' | 'hidden'（運営が止めた）
   latest_version INTEGER,
@@ -266,7 +263,7 @@ CREATE TABLE reports (
   id          INTEGER PRIMARY KEY,
   scenario_id INTEGER REFERENCES scenarios(id),
   pack_id     TEXT REFERENCES packs(id),
-  reason      TEXT NOT NULL,              -- 'rights' | 'rating' | 'malware' | 'other'
+  reason      TEXT NOT NULL,              -- 'rights' | 'adult' | 'malware' | 'other'
   detail      TEXT,
   contact     TEXT,
   state       TEXT NOT NULL DEFAULT 'open',
@@ -372,7 +369,6 @@ flowchart TB
 
 - `requires` は「サイトの既定のパック（`is_default`）− 投稿者が外したもの（`excludes`）＋ 投稿者が足したもの（`requires`）」を、`priority` の順に並べる
 - `/play/srcweb.json`: `title: "SRC-Site"`、`catalogs: ["/api/catalog.json"]`、`allowUserArchives: true`、`allowUserCatalogs: false`（他のサイトのカタログは読ませない）
-- 年齢の区分が `general` でないシナリオは、カタログに `rating` を足す（SRC#Web の変更。下の節）
 - カタログが大きくなったら、`/api/catalog.json` は一覧用の軽いものにし、`?play=<slug>` で開くときは `/api/catalog/<slug>.json`（そのシナリオと要るパックだけ）を読む形にする（SRC#Web の変更）
 
 ## 共有パック
@@ -393,17 +389,10 @@ flowchart TB
 - 取り下げたファイル（`takedowns` の `pack_file`）は、zip を作るときに除く。版が変わるので SRC#Web は取り直す
 - サウンドパック（GSC）・オリジナル BGM パック・JASRAC 管理曲は配らない。利用者が SRC#Web の「素材を追加」で入れる。ポータルのシナリオの頁と SRC#Web に、入手先の案内を出す
 
-## 年齢の区分
+## 成人向けの内容
 
-| 区分 | 意味 | 扱い |
-|---|---|---|
-| `general` | 全年齢 | そのまま出す |
-| `r15` | 15 歳以上 | 一覧に印を付ける。詳細・プレイ・ダウンロードの前に一度確かめる |
-| `r18` | 18 歳以上 | 一覧では既定で隠す（利用者が表示を選べる）。詳細・プレイ・ダウンロードの前に確かめる |
-
-- 区分は投稿者が付ける（自己申告）。違う区分の通報を受けたら運営が直す
-- 確かめた結果はブラウザ（Cookie）に残す。ログインは要らない
-- SRC#Web の `?play=` で直接開いたときも確かめる（SRC#Web の変更）
+- 当面、成人向け（18 歳未満の閲覧に適さない）のシナリオは扱わない。規約で投稿を禁じ、通報（理由「成人向けの内容」）を受けたら運営が公開を止める
+- 年齢の区分・年齢の確認の機能は持たない（SRC#Web の `ratingConfirm` も使わない）
 
 ## 運営
 
@@ -431,7 +420,7 @@ flowchart TB
 | 変更 | 内容 |
 |---|---|
 | 利用者の素材を優先する | 利用者が追加した素材を `requires` の後に重ねる（今は先）。手元の BGM で差し替えられるように |
-| 年齢の区分 | カタログの `rating` を見て、始める前に確かめる |
+| 年齢の区分 | カタログの `rating` を見て、始める前に確かめる（`ratingConfirm` でオプトイン。このサイトでは使わない） |
 | 1 本だけのカタログ | `?play=<slug>` のときに、そのシナリオだけのカタログ（`/api/catalog/<slug>.json`）を読めるようにする |
 | 足りないアセットの表示 | 見つからなかった BGM・画像・効果音の名前を記録し、システムメニューから見られるようにする |
 | 置き場所 | `/play/` に置く（`<base href="/play/">`）。発行時に書き換える |
@@ -472,7 +461,7 @@ flowchart TB
 |---|---|---|
 | 1. 土台 | リポジトリの雛形、D1 のマイグレーション、R2、`deploy.yml`、確認環境 | 確認環境で空のポータルと `/play/` の SRC#Web が開く |
 | 2. 閲覧と遊ぶ | 一覧・詳細・カタログ・ファイルの配信、共有パック（`src-basic`・`soundfont`）、運営がスクリプトで登録したシナリオ（ランタン号） | ランタン号をポータルから Web 版で遊べ、zip をダウンロードできる |
-| 3. ログインと投稿 | Google のログイン、投稿の API と画面、検査、版の管理、年齢の区分 | Google でログインして zip を上げると、数分以内に一覧に出て遊べる |
+| 3. ログインと投稿 | Google のログイン、投稿の API と画面、検査、版の管理 | Google でログインして zip を上げると、数分以内に一覧に出て遊べる |
 | 4. 運営 | 通報、運営の画面、取り下げ、規約と窓口の頁、Turnstile、回数の制限 | 通報からシナリオの非公開・パックのファイルの取り下げまでを画面でできる |
 | 5. 汎用データ | `src-graphic`・`src-battle-anime`・`src-sound`・GSC のパックを登録し、既定に入れる | 汎用戦闘アニメを使うシナリオが追加の操作なしで動く |
 | 6. 参照の照合 | `srcsharp` で参照するアセットを抜き出し、足りないものを詳細と SRC#Web に出す | シナリオの頁に「足りない BGM」が出る |

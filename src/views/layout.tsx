@@ -1,6 +1,5 @@
 import type { Child } from 'hono/jsx';
 import type { User } from '../env';
-import { RATING_LABELS, type Rating } from '../lib/util';
 
 export function Layout(props: { title: string; siteName: string; user: User | null; children: Child; head?: Child }) {
   const { title, siteName, user } = props;
@@ -44,12 +43,6 @@ export function Layout(props: { title: string; siteName: string; user: User | nu
   );
 }
 
-export function RatingBadge(props: { rating: string }) {
-  if (props.rating === 'general') {
-    return null;
-  }
-  return <span class={`badge rating-${props.rating}`}>{RATING_LABELS[props.rating as Rating] ?? props.rating}</span>;
-}
 
 export function Notice(props: { kind?: 'error' | 'info'; children: Child }) {
   return <p class={`notice ${props.kind ?? 'info'}`}>{props.children}</p>;
