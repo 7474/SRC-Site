@@ -40,10 +40,11 @@
   "workers_dev": true,
   "preview_urls": false,
 
+  // 通報の Google フォーム（docs/operations.md の「通報」）。{url}・{title} は事前入力の項目
   "env": {
     "staging": {
       "name": "src-site-staging",
-      "vars": { "SITE_NAME": "SRC-Site（確認）", "R2_BUCKET": "src-site-staging" },
+      "vars": { "SITE_NAME": "SRC-Site（確認）", "R2_BUCKET": "src-site-staging", "REPORT_FORM_URL": "https://docs.google.com/forms/d/e/1FAIpQLSeWaqUfmgC0xPP9zXYV5kYqyJu0iHbH5Xzmmmn6ykEH1SBUNw/viewform?usp=pp_url&entry.1926660821={url}&entry.1488419007={title}" },
       // database_id は wrangler d1 create src-site-staging の出力（scripts/bootstrap.sh）
       "d1_databases": [
         { "binding": "DB", "database_name": "src-site-staging", "database_id": "cd83b950-2450-4ce5-bc86-4c20b38d9a60", "migrations_dir": "migrations" }
@@ -62,7 +63,7 @@
     },
     "production": {
       "name": "src-site",
-      "vars": { "SITE_NAME": "SRC-Site", "R2_BUCKET": "src-site" },
+      "vars": { "SITE_NAME": "SRC-Site", "R2_BUCKET": "src-site", "REPORT_FORM_URL": "https://docs.google.com/forms/d/e/1FAIpQLSeWaqUfmgC0xPP9zXYV5kYqyJu0iHbH5Xzmmmn6ykEH1SBUNw/viewform?usp=pp_url&entry.1926660821={url}&entry.1488419007={title}" },
       "routes": [{ "pattern": "src.koudenpa.net", "custom_domain": true }],
       "d1_databases": [
         { "binding": "DB", "database_name": "src-site", "database_id": "5a6976ca-0570-42dc-b095-617bb214c642", "migrations_dir": "migrations" }
