@@ -32,7 +32,7 @@ flowchart LR
   subgraph CF[Cloudflare]
     Worker[Worker<br/>画面・API・認証・配信]
     Assets[静的アセット<br/>ポータル + SRC#Web]
-    D1[(D1<br/>利用者・シナリオ・版・通報)]
+    D1[(D1<br/>利用者・シナリオ・版)]
     R2[(R2<br/>シナリオの zip・素材・dotnet.native.wasm)]
     Queue[Queues<br/>投稿の検査]
   end
@@ -55,7 +55,7 @@ flowchart LR
 |---|---|---|
 | `/` `/s/<id>` `/u/<name>` | ポータルの画面（一覧・詳細・投稿者） | 通常 |
 | `/play/` | SRC#Web（`<base href="/play/">`） | COOP `same-origin`・COEP `require-corp`（SRC#Web はマルチスレッドのため必須） |
-| `/api/*` | JSON の API（ログイン・投稿・一覧・通報） | 通常 |
+| `/api/*` | JSON の API（投稿・カタログ） | 通常 |
 | `/api/catalog.json` | 公開中のシナリオから作るカタログ | CORP `same-origin` |
 | `/files/scenarios/<id>/<version>.zip` | シナリオの zip（R2）。Range・ETag に対応 | CORP、`Content-Disposition`（ダウンロード時） |
 | `/files/assets/<id>/<version>.zip` | 素材の zip（汎用戦闘アニメなど） | CORP |
@@ -112,7 +112,6 @@ sequenceDiagram
 | `sessions` | id、user_id、期限（Cookie は HttpOnly・Secure・SameSite=Lax） |
 | `scenarios` | id（URL に使う短い名前）、owner、題名、説明、作者表記、ライセンス、公開状態、汎用戦闘アニメを使うか |
 | `versions` | scenario_id、版、R2 のキー、大きさ、sha256、root、eve、requires、ファイル一覧の要約、検査結果、作成日時 |
-| `reports` | 対象、理由、通報者、状態 |
 
 - D1 は 1 つのデータベースが 10 GB まで（Paid）で、行の大きさは 2 MB まで（[D1 の制限](https://developers.cloudflare.com/d1/platform/limits/)）。zip の中身は D1 に入れない
 

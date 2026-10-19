@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { catalog, resolveRequires, type PackRow, type PlayableRow } from '../src/lib/catalog';
+import { reportUrl } from '../src/lib/util';
 
 const pack = (id: string, is_default: number, priority: number, withdrawn = 0): PackRow => ({
   id, title: id, description: null, source_name: 's', source_url: null, license: 'l', is_default, priority, root: null,
@@ -29,5 +30,19 @@ describe('resolveRequires', () => {
       ['basic', 'asset', '/files/packs/basic/v1.zip'],
       ['graphic', 'asset', '/files/packs/graphic/v1.zip'],
     ]);
+  });
+});
+
+describe('reportUrl', () => {
+  it('フォームの URL が無ければ null', () => {
+    expect(reportUrl(undefined)).toBeNull();
+  });
+
+  it('{url}・{title} を置き換える', () => {
+    const template = 'https://docs.google.com/forms/d/e/x/viewform?usp=pp_url&entry.1={url}&entry.2={title}';
+    expect(reportUrl(template, { url: 'https://src.koudenpa.net/scenarios/a', title: 'ランタン号 & 1' })).toBe(
+      'https://docs.google.com/forms/d/e/x/viewform?usp=pp_url&entry.1=https%3A%2F%2Fsrc.koudenpa.net%2Fscenarios%2Fa&entry.2=%E3%83%A9%E3%83%B3%E3%82%BF%E3%83%B3%E5%8F%B7%20%26%201',
+    );
+    expect(reportUrl(template)).toBe('https://docs.google.com/forms/d/e/x/viewform?usp=pp_url&entry.1=&entry.2=');
   });
 });

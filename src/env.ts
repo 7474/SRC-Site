@@ -8,8 +8,8 @@ export type Bindings = {
   WRITE_LIMITER?: RateLimit;
   SITE_NAME: string;
   R2_BUCKET: string;
-  // 通報を Issue にする GitHub の repo（owner/repo）。無ければ Issue にしない
-  REPORT_REPO?: string;
+  // 通報の Google フォームの URL。{url}・{title} をシナリオの URL・題に置き換える（事前入力）。無ければ通報の案内を出さない
+  REPORT_FORM_URL?: string;
   // Secret（無ければその機能を使わない）
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
@@ -19,7 +19,6 @@ export type Bindings = {
   R2_SECRET_ACCESS_KEY?: string;
   TURNSTILE_SITE_KEY?: string;
   TURNSTILE_SECRET?: string;
-  GITHUB_TOKEN?: string;
   // ローカル開発用: Google を通さずにログインする（wrangler dev の .dev.vars でだけ設定する）
   DEV_LOGIN?: string;
 };
@@ -28,7 +27,7 @@ export type Bindings = {
 export const PLACEHOLDER = 'PLACEHOLDER';
 const SECRETS = [
   'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'SESSION_SECRET', 'R2_ACCOUNT_ID', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY',
-  'TURNSTILE_SITE_KEY', 'TURNSTILE_SECRET', 'GITHUB_TOKEN',
+  'TURNSTILE_SITE_KEY', 'TURNSTILE_SECRET',
 ] as const;
 
 /** 仮の値（PLACEHOLDER）の Secret を除いた環境 */

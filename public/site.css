@@ -77,7 +77,7 @@ table { width: 100%; border-collapse: collapse; background: var(--panel); font-s
 th, td { border: 1px solid var(--line); padding: 6px 8px; text-align: left; vertical-align: top; }
 .gate { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px; }
 .doc { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 20px; }
-details.report { margin-top: 32px; }
+.report { margin-top: 32px; }
 progress { width: 100%; }
 dl dt { font-weight: 600; margin-top: 8px; }
 dl dd { margin-left: 0; }

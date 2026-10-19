@@ -78,7 +78,7 @@ src-site/
 - 同じ段に「利用者が決める値」と「決まった語」を並べない。作る・直す・消すは本人の区分（`/my/`）に置き、公開の区分（`/scenarios/:slug` など）の下に `new`・`edit` のような語を作らない。予約語は要らない
 - 区分ごとに認証を揃える。HTML の画面はログインの状態を出すので、どの区分も `private, no-store`。共有のキャッシュに載せるのは `/api/catalog*`・`/files/`・静的アセット
 - 資源の名前は英語の複数形（`scenarios`・`users`・`packs`・`versions`）
-- 状態を変えるのは `POST` だけ。動詞（`report`・`delete` など）は最後の段に置く
+- 状態を変えるのは `POST` だけ。動詞（`delete`・`hide` など）は最後の段に置く
 - HTML の画面と JSON の API（`/api/`）と不変のファイル（`/files/`）を分ける
 
 ### 最上位の区分
@@ -99,9 +99,8 @@ src-site/
 | パス | 内容 |
 |---|---|
 | `GET /` | 新着・検索（`?q=`。題名・作者・タグ・ハンドル） |
-| `GET /scenarios/:slug` | シナリオの詳細（説明・版・必要なパック・プレイ・ダウンロード・通報） |
+| `GET /scenarios/:slug` | シナリオの詳細（説明・版・必要なパック・プレイ・ダウンロード・通報のフォームへのリンク） |
 | `GET /scenarios/:slug/download` | 最新版の zip（`Content-Disposition: attachment`） |
-| `POST /scenarios/:slug/report` | 通報（ログイン不要。Turnstile） |
 | `GET /users/:handle` | 投稿者の頁 |
 | `GET /packs` | 共有パックの一覧 |
 | `GET /packs/:id` | 共有パックの頁（出典・条件・取り下げの記録） |
@@ -125,9 +124,8 @@ src-site/
 
 | パス | 内容 |
 |---|---|
-| `GET /admin` | 通報・公開を止めているシナリオ・利用者の一覧 |
+| `GET /admin` | 公開を止めているシナリオ・利用者の一覧、パックの取り下げ |
 | `POST /admin/scenarios/:slug/hide` `POST /admin/scenarios/:slug/unhide` | 公開を止める・再開する |
-| `POST /admin/reports/:id/close` | 通報を対応済みにする |
 | `POST /admin/users/:id/suspend` `POST /admin/users/:id/unsuspend` | 利用者を止める・戻す |
 | `POST /admin/takedowns` | パック（のファイル）の取り下げを記録する |
 
@@ -258,18 +256,7 @@ CREATE TABLE takedowns (
   created_at  INTEGER NOT NULL
 );
 
--- 通報
-CREATE TABLE reports (
-  id          INTEGER PRIMARY KEY,
-  scenario_id INTEGER REFERENCES scenarios(id),
-  pack_id     TEXT REFERENCES packs(id),
-  reason      TEXT NOT NULL,              -- 'rights' | 'adult' | 'malware' | 'other'
-  detail      TEXT,
-  contact     TEXT,
-  state       TEXT NOT NULL DEFAULT 'open',
-  created_at  INTEGER NOT NULL,
-  github_issue TEXT                       -- 通報から作った GitHub の Issue
-);
+-- 通報は Google フォームで受ける（D1 には置かない）
 
 -- 遊んだ・ダウンロードした回数（人気の並びに使う）
 CREATE TABLE counters (
@@ -392,15 +379,15 @@ flowchart TB
 
 ## 成人向けの内容
 
-- 当面、成人向け（18 歳未満の閲覧に適さない）のシナリオは扱わない。規約で投稿を禁じ、通報（理由「成人向けの内容」）を受けたら運営が公開を止める
+- 当面、成人向け（18 歳未満の閲覧に適さない）のシナリオは扱わない。規約で投稿を禁じ、通報を受けたら運営が公開を止める
 - 年齢の区分・年齢の確認の機能は持たない（SRC#Web の `ratingConfirm` も使わない）
 
 ## 運営
 
 | 機能 | 内容 |
 |---|---|
-| 通報 | シナリオの頁の「通報」。理由（権利・成人向けの内容・有害なファイル・その他）と詳細、連絡先（任意）。Turnstile を通す。GitHub の Issue にして運営に知らせる（docs/operations.md の「通報」） |
-| 運営の画面 | 通報の一覧、シナリオの非公開（`hidden`）、版の取り下げ（`withdrawn`）、利用者の停止、パックのファイルの取り下げ |
+| 通報 | Google フォームで受ける（サイトには通報の機能を持たない）。シナリオの頁と `/about/rights` からリンクし、シナリオの URL・題を事前入力する（`REPORT_FORM_URL`。docs/operations.md の「通報」） |
+| 運営の画面 | シナリオの非公開（`hidden`。シナリオの頁から）と再開、版の取り下げ（`withdrawn`）、利用者の停止、パックのファイルの取り下げ |
 | 取り下げの手順 | 権利者の申し出 → 非公開にする（即時）→ 投稿者に連絡（ポータル上の通知）→ 投稿者が直せば再公開。SRC 公式サイトのリンク集の対応に倣う |
 | 窓口 | `/about/rights`（申し出の方法、対応の手順、取り下げた記録の公開） |
 | 規約 | `/about/terms`。SRC 派生ソフトウェアの規約（形式 1）を含め、投稿時に同意を取る。内容の責任は投稿者にあることを明記する |
@@ -413,7 +400,6 @@ flowchart TB
 |---|---|
 | 投稿 | 1 人 1 日 10 版、合計 5 GB まで（D1 で数える）。版の作成に Turnstile |
 | API 全般 | [Rate Limiting](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/) で、ログインしている人は `user:<id>`、していない人はパスごとに 60 秒あたりの回数を決める（数えるのは拠点ごとの近似） |
-| 通報 | Turnstile、書き込みの回数の制限。GitHub の Issue は同じシナリオにつき 24 時間に 1 つ（ほかの通報はその Issue に紐づける） |
 | ファイル | 検査の規則（上）。SRC#Web は .eve をブラウザの中で動かすだけで、同梱の HTML はスクリプトを動かさない枠で出す |
 
 ## SRC#Web の変更（7474/SRC）
@@ -463,7 +449,7 @@ flowchart TB
 | 1. 土台 | リポジトリの雛形、D1 のマイグレーション、R2、`deploy.yml`、確認環境 | 確認環境で空のポータルと `/play/` の SRC#Web が開く |
 | 2. 閲覧と遊ぶ | 一覧・詳細・カタログ・ファイルの配信、共有パック（`src-basic`・`soundfont`）、運営がスクリプトで登録したシナリオ（ランタン号） | ランタン号をポータルから Web 版で遊べ、zip をダウンロードできる |
 | 3. ログインと投稿 | Google のログイン、投稿の API と画面、検査、版の管理 | Google でログインして zip を上げると、数分以内に一覧に出て遊べる |
-| 4. 運営 | 通報、運営の画面、取り下げ、規約と窓口の頁、Turnstile、回数の制限 | 通報からシナリオの非公開・パックのファイルの取り下げまでを画面でできる |
+| 4. 運営 | 通報（Google フォーム）、運営の画面、取り下げ、規約と窓口の頁、Turnstile、回数の制限 | 通報からシナリオの非公開・パックのファイルの取り下げまでを画面でできる |
 | 5. 汎用データ | `src-graphic`・`src-battle-anime`・`src-sound`・GSC のパックを登録し、既定に入れる | 汎用戦闘アニメを使うシナリオが追加の操作なしで動く |
 | 6. 参照の照合 | `srcsharp` で参照するアセットを抜き出し、足りないものを詳細と SRC#Web に出す | シナリオの頁に「足りない BGM」が出る |
 | 7. 本番 | `src.koudenpa.net` で公開 | ― |

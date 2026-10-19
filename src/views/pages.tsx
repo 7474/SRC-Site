@@ -63,8 +63,8 @@ export function ScenarioPage(props: {
   versions: VersionItem[];
   packs: PackItem[];
   canEdit: boolean;
-  reported?: boolean;
-  turnstileKey?: string;
+  isAdmin: boolean;
+  reportUrl: string | null;
 }) {
   const { s, latest } = props;
   return (
@@ -106,25 +106,14 @@ export function ScenarioPage(props: {
           ))}
         </ul>
       </section>
-      <details class="report">
-        <summary>通報する</summary>
-        {props.reported ? <Notice>通報を受け付けました。</Notice> : (
-          <form method="post" action={`/scenarios/${s.slug}/report`}>
-            <label>理由
-              <select name="reason">
-                <option value="rights">権利の侵害（自分の作品・素材が無断で使われている など）</option>
-                <option value="adult">成人向けの内容</option>
-                <option value="malware">有害なファイル</option>
-                <option value="other">その他</option>
-              </select>
-            </label>
-            <label>詳細<textarea name="detail" rows={4} maxlength={2000} required /></label>
-            <label>連絡先（任意）<input name="contact" maxlength={200} /></label>
-            <Turnstile siteKey={props.turnstileKey} />
-            <button type="submit">送る</button>
-          </form>
-        )}
-      </details>
+      {props.reportUrl && (
+        <p class="report small"><a href={props.reportUrl} target="_blank" rel="noopener">このシナリオを通報する（Google フォーム）</a></p>
+      )}
+      {props.isAdmin && !s.hidden && (
+        <form method="post" action={`/admin/scenarios/${s.slug}/hide`} class="report compact">
+          <input name="reason" placeholder="止める理由（公開されます）" /> <button type="submit">運営: 公開を止める</button>
+        </form>
+      )}
     </article>
   );
 }

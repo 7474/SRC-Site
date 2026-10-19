@@ -5,10 +5,9 @@ import { Layout, Notice } from '../views/layout';
 import { EditPage, Home, MePage, NewScenarioPage, PackPage, PacksPage, ScenarioPage, Simple, UserPage, type ListItem, type ScenarioForm } from '../views/pages';
 import { Rights, Terms } from '../views/about';
 import { canEdit, canView, getScenario, LIST_SELECT, requireUser } from './common';
-import { createReportIssue } from '../lib/github';
 import { verifyTurnstile } from '../lib/turnstile';
 import { canPresign } from '../lib/presign';
-import { HANDLE_PATTERN, now, parseJsonArray, SLUG_PATTERN } from '../lib/util';
+import { HANDLE_PATTERN, now, parseJsonArray, reportUrl, SLUG_PATTERN } from '../lib/util';
 import type { Child } from 'hono/jsx';
 
 export const pages = new Hono<AppEnv>();
@@ -90,39 +89,10 @@ pages.get('/scenarios/:slug', async c => {
       versions={versions}
       packs={packs}
       canEdit={canEdit(c, s)}
-      reported={c.req.query('reported') === '1'}
-      turnstileKey={c.env.TURNSTILE_SITE_KEY}
+      isAdmin={c.get('user')?.role === 'admin'}
+      reportUrl={reportUrl(c.env.REPORT_FORM_URL, { url: new URL(`/scenarios/${s.slug}`, c.req.url).toString(), title: s.title })}
     />
   ));
-});
-
-pages.post('/scenarios/:slug/report', async c => {
-  const s = await getScenario(c, c.req.param('slug'));
-  if (!s) {
-    return notFound(c);
-  }
-  const form = await c.req.parseBody();
-  if (!(await verifyTurnstile(c.env, form['cf-turnstile-response'] as string | undefined, c.req.header('CF-Connecting-IP')))) {
-    return render(c, '通報', <Notice kind="error">確認に失敗しました。戻ってやり直してください。</Notice>, 400);
-  }
-  const reason = ['rights', 'adult', 'malware', 'other'].includes(form.reason as string) ? form.reason as string : 'other';
-  const detail = String(form.detail ?? '').slice(0, 2000);
-  const contact = String(form.contact ?? '').slice(0, 200) || null;
-  const inserted = await c.env.DB.prepare('INSERT INTO reports (scenario_id, reason, detail, contact, created_at) VALUES (?, ?, ?, ?, ?)')
-    .bind(s.id, reason, detail, contact, now()).run();
-  // GitHub の Issue にして運営に知らせる（応答は待たない）。同じシナリオの未対応の通報に 24 時間以内の Issue があれば、それに紐づけるだけにする
-  const reportId = inserted.meta.last_row_id;
-  const issue = { site: c.env.SITE_NAME, origin: new URL(c.req.url).origin, slug: s.slug, title: s.title, reason, detail, contact };
-  c.executionCtx.waitUntil((async () => {
-    const recent = await c.env.DB.prepare(
-      "SELECT github_issue FROM reports WHERE scenario_id = ? AND state = 'open' AND github_issue IS NOT NULL AND created_at > ? LIMIT 1",
-    ).bind(s.id, now() - 24 * 3600 * 1000).first<{ github_issue: string }>();
-    const url = recent?.github_issue ?? await createReportIssue(c.env, issue);
-    if (url) {
-      await c.env.DB.prepare('UPDATE reports SET github_issue = ? WHERE id = ?').bind(url, reportId).run();
-    }
-  })());
-  return c.redirect(`/scenarios/${s.slug}?reported=1`);
 });
 
 pages.get('/users/:handle', async c => {
@@ -152,7 +122,7 @@ pages.get('/packs/:id', async c => {
 });
 
 pages.get('/about/terms', c => render(c, '利用規約', <Terms />));
-pages.get('/about/rights', c => render(c, '権利者の方へ', <Rights />));
+pages.get('/about/rights', c => render(c, '権利者の方へ', <Rights reportUrl={reportUrl(c.env.REPORT_FORM_URL)} />));
 
 // ── ログインが要る頁 ──
 
@@ -248,7 +218,6 @@ pages.post('/my/scenarios/:slug/delete', requireUser, async c => {
   await c.env.DB.batch([
     c.env.DB.prepare('DELETE FROM versions WHERE scenario_id = ?').bind(s.id),
     c.env.DB.prepare('DELETE FROM counters WHERE scenario_id = ?').bind(s.id),
-    c.env.DB.prepare('UPDATE reports SET scenario_id = NULL WHERE scenario_id = ?').bind(s.id),
     c.env.DB.prepare('DELETE FROM scenarios WHERE id = ?').bind(s.id),
   ]);
   return c.redirect('/my');

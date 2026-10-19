@@ -83,3 +83,13 @@ export const SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]{1,38}[a-z0-9])$/;
 /** 表示名（URL にも使う。英数字・_・-、3〜24 文字） */
 export const HANDLE_PATTERN = /^[A-Za-z0-9_-]{3,24}$/;
 
+
+/** 通報のフォームの URL（docs/operations.md の「通報」）。{url}・{title} を置き換える */
+export function reportUrl(template: string | undefined, target?: { url: string; title: string }): string | null {
+  if (!template) {
+    return null;
+  }
+  return template
+    .replaceAll('{url}', encodeURIComponent(target?.url ?? ''))
+    .replaceAll('{title}', encodeURIComponent(target?.title ?? ''));
+}

@@ -37,11 +37,11 @@ export function Terms() {
   );
 }
 
-export function Rights() {
+export function Rights(props: { reportUrl: string | null }) {
   return (
     <article class="doc">
       <h1>権利者の方へ</h1>
-      <p>このサイトのシナリオ・共有パックに、ご自身の作品・素材が許諾なく使われている場合は、シナリオ・パックの頁の「通報する」からお知らせください（理由に「権利の侵害」を選び、どのファイルが該当するか、連絡先を書いてください）。</p>
+      <p>このサイトのシナリオ・共有パックに、ご自身の作品・素材が許諾なく使われている場合は、{props.reportUrl ? <a href={props.reportUrl} target="_blank" rel="noopener">通報のフォーム（Google フォーム）</a> : '通報のフォーム（準備中）'}からお知らせください（理由に「権利の侵害」を選び、該当するシナリオ・ファイルと連絡先を書いてください）。シナリオの頁の「このシナリオを通報する」からも開けます。</p>
       <h2>対応の手順</h2>
       <ol>
         <li>申し出を受けたら、運営が内容を確かめ、該当するシナリオの公開・パックのファイルの配布を止めます。</li>

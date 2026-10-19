@@ -2,7 +2,7 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '../env';
 import { Layout } from '../views/layout';
-import { AdminPage, type HiddenItem, type ReportItem, type UserItem } from '../views/admin';
+import { AdminPage, type HiddenItem, type UserItem } from '../views/admin';
 import { now } from '../lib/util';
 import { requireAdmin } from './common';
 
@@ -11,17 +11,12 @@ export const admin = new Hono<AppEnv>();
 admin.use('*', requireAdmin);
 
 admin.get('/', async c => {
-  const reports = (await c.env.DB.prepare(
-    `SELECT r.id, r.reason, r.detail, r.contact, r.created_at, r.pack_id, r.github_issue, s.slug, s.title, s.hidden
-       FROM reports r LEFT JOIN scenarios s ON s.id = r.scenario_id
-      WHERE r.state = 'open' ORDER BY r.created_at DESC LIMIT 100`,
-  ).all<ReportItem>()).results;
   const users = (await c.env.DB.prepare('SELECT id, handle, role, suspended, created_at FROM users ORDER BY created_at DESC LIMIT 100').all<UserItem>()).results;
   const hidden = (await c.env.DB.prepare('SELECT slug, title, hidden_reason FROM scenarios WHERE hidden = 1 ORDER BY updated_at DESC LIMIT 100').all<HiddenItem>()).results;
   c.header('Cache-Control', 'private, no-store');
   return c.html(
     <Layout title="運営" siteName={c.env.SITE_NAME} user={c.get('user')}>
-      <AdminPage reports={reports} users={users} hidden={hidden} message={c.req.query('m')} />
+      <AdminPage users={users} hidden={hidden} message={c.req.query('m')} />
     </Layout>,
   );
 });
@@ -43,11 +38,6 @@ admin.post('/scenarios/:slug/unhide', async c => {
   const slug = c.req.param('slug');
   await c.env.DB.prepare('UPDATE scenarios SET hidden = 0, hidden_reason = NULL WHERE slug = ?').bind(slug).run();
   return c.redirect(back(`${slug} の公開を再開しました`));
-});
-
-admin.post('/reports/:id/close', async c => {
-  await c.env.DB.prepare("UPDATE reports SET state = 'closed' WHERE id = ?").bind(Number(c.req.param('id'))).run();
-  return c.redirect(back('対応済みにしました'));
 });
 
 admin.post('/takedowns', async c => {

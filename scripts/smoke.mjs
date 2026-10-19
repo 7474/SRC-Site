@@ -136,24 +136,24 @@ catalog = await (await visitor.req('/api/catalog.json')).json();
 assert.equal(catalog.entries.find(e => e.id === slug).rating, undefined);
 step('編集とシナリオの頁（年齢の区分は無い）');
 
-res = await fetch(base + `/scenarios/${slug}/report`, { method: 'POST', headers: { Origin: 'https://evil.example' }, body: new URLSearchParams({ reason: 'other', detail: 'x' }) });
+res = await fetch(base + `/my/scenarios/${slug}/delete`, { method: 'POST', headers: { Origin: 'https://evil.example' } });
 assert.equal(res.status, 403);
 step('別のサイトからの POST は断る');
 
-res = await visitor.form(`/scenarios/${slug}/report`, { reason: 'rights', detail: 'スモークの通報', contact: '' });
-assert.equal(res.status, 302);
 await admin.req('/auth/dev?as=admin-' + slug + '&admin=1&next=/admin');
-res = await admin.req('/admin');
-assert.match(await res.text(), /スモークの通報/);
+res = await admin.req(`/scenarios/${slug}`);
+assert.match(await res.text(), /運営: 公開を止める/);
+assert.doesNotMatch(await (await visitor.req(`/scenarios/${slug}`)).text(), /運営: 公開を止める/);
 res = await admin.form(`/admin/scenarios/${slug}/hide`, { reason: '確認中' });
 assert.equal(res.status, 302);
 assert.equal((await visitor.req(entry.archive)).status, 404, '止めたら配らない');
 assert.equal((await visitor.req(`/scenarios/${slug}`)).status, 404);
 res = await alice.req(`/scenarios/${slug}`);
 assert.match(await res.text(), /運営により公開を止めています/);
+assert.match(await (await admin.req('/admin')).text(), new RegExp(slug));
 res = await admin.form(`/admin/scenarios/${slug}/unhide`, {});
 assert.equal((await visitor.req(entry.archive)).status, 200);
-step('通報 → 運営が止める → 再開');
+step('運営が止める → 再開');
 
 res = await visitor.req('/admin');
 assert.equal(res.status, 404, '運営の頁は運営だけ');
