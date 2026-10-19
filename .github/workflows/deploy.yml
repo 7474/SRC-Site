@@ -1,0 +1,125 @@
+name: Deploy
+
+# SRC#Web（7474/SRC の SRC.Sharp/SRCSharpWeb）を発行し、ポータルの Worker と合わせて Cloudflare に配信する（docs/operations.md）
+#   main への push → 確認環境（staging）
+#   タグ v* の push か手動実行 → 本番（production）か確認環境
+# 必要な Secrets: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID（任意: MACKEREL_CLIENT_TOKEN）
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: '配信先'
+        type: choice
+        options:
+          - staging
+          - production
+        default: staging
+      src_ref:
+        description: '発行する 7474/SRC のブランチ・タグ'
+        type: string
+        default: ''
+
+env:
+  SRC_REF: ${{ inputs.src_ref || vars.SRC_REF || 'master' }}
+  DEPLOY_ENV: ${{ inputs.environment || (startsWith(github.ref, 'refs/tags/v') && 'production') || 'staging' }}
+
+concurrency:
+  group: deploy-${{ inputs.environment || (startsWith(github.ref, 'refs/tags/v') && 'production') || 'staging' }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    environment: ${{ inputs.environment || (startsWith(github.ref, 'refs/tags/v') && 'production') || 'staging' }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check configuration
+        run: |
+          # scripts/bootstrap.sh で作った D1 の ID を wrangler.jsonc に入れてから配信する
+          if node -e '
+            const t = require("fs").readFileSync("wrangler.jsonc", "utf8");
+            const env = process.env.DEPLOY_ENV;
+            const name = env === "production" ? "src-site" : "src-site-" + env;
+            const m = t.match(new RegExp(`"database_name": "${name}", "database_id": "([0-9a-f-]+)"`));
+            process.exit(m && !/^[0-]+$/.test(m[1]) ? 1 : 0);
+          '; then
+            echo "::error::wrangler.jsonc の ${DEPLOY_ENV} の D1 の database_id が仮の値のまま（scripts/bootstrap.sh）"
+            exit 1
+          fi
+
+      - name: Checkout SRC
+        uses: actions/checkout@v7
+        with:
+          repository: 7474/SRC
+          ref: ${{ env.SRC_REF }}
+          path: srcsharp
+
+      - name: Resolve SRC commit
+        id: src
+        run: echo "sha=$(git -C srcsharp rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      # 発行物は 7474/SRC のコミットごとにキャッシュする（src-host と同じ）
+      # https://github.com/actions/cache
+      - name: Cache published SRC#Web
+        id: published
+        uses: actions/cache@v6
+        with:
+          path: out/web
+          key: srcweb-aot-${{ steps.src.outputs.sha }}
+
+      - uses: actions/setup-dotnet@v6
+        if: steps.published.outputs.cache-hit != 'true'
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Cache NuGet packages and build intermediates
+        if: steps.published.outputs.cache-hit != 'true'
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.nuget/packages
+            srcsharp/SRC.Sharp/*/obj
+          key: srcweb-build-${{ steps.src.outputs.sha }}
+          restore-keys: |
+            srcweb-build-
+
+      - name: Publish SRC#Web
+        if: steps.published.outputs.cache-hit != 'true'
+        run: |
+          dotnet workload install wasm-tools
+          dotnet publish srcsharp/SRC.Sharp/SRCSharpWeb/SRCSharpWeb.csproj -c Release -p:RunAOTCompilation=true -o out/web
+
+      - name: Assemble
+        env:
+          MACKEREL_CLIENT_TOKEN: ${{ secrets.MACKEREL_CLIENT_TOKEN }}
+        run: |
+          SRCWEB_DIR=out/web/wwwroot SRC_VERSION="${SRC_REF} $(git -C srcsharp rev-parse --short HEAD)" bash scripts/assemble.sh
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Deploy to Cloudflare
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          npm ci
+          bucket=$([ "$DEPLOY_ENV" = production ] && echo src-site || echo "src-site-$DEPLOY_ENV")
+          # 静的アセットは 1 ファイル 25 MiB まで。超えるもの（AOT の dotnet.native.wasm など）は R2 の web/ に置き、Worker が返す
+          # https://developers.cloudflare.com/workers/platform/limits/#static-assets
+          (cd dist/play && find . -type f -size +25M | sed 's#^\./##') | while read -r f; do
+            echo "R2: web/$f"
+            npx wrangler r2 object put "$bucket/web/$f" --file "dist/play/$f" --remote
+            rm "dist/play/$f"
+          done
+          npx wrangler d1 migrations apply DB --env "$DEPLOY_ENV" --remote
+          npx wrangler deploy --env "$DEPLOY_ENV"

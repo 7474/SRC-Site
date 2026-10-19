@@ -381,7 +381,7 @@ flowchart TB
 
 | 環境 | ドメイン | 配信 |
 |---|---|---|
-| 確認 | `src-site-stg.<アカウント>.workers.dev` | `main` への push |
+| 確認 | `src-site-staging.<サブドメイン>.workers.dev` | `main` への push |
 | 本番 | `src.koudenpa.net`（Workers のカスタムドメイン） | タグ `v*` の push か手動 |
 
 - 環境ごとに D1・R2・Queues を分ける（`wrangler.jsonc` の `env`）

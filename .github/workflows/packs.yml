@@ -1,0 +1,72 @@
+name: Packs
+
+# packs/*.json の定義からパック（素材の zip）を作り、R2 に置き、D1 の packs を更新する（scripts/publish-packs.sh）
+# 中身が変わらなければ何もしない。取り下げ（運営の画面）を反映するときも手動で実行する
+# 必要な Secrets: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'packs/**'
+      - 'scripts/packs.py'
+      - 'scripts/publish-packs.sh'
+      - 'scripts/make-soundfont.sh'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: '配信先'
+        type: choice
+        options:
+          - staging
+          - production
+        default: staging
+      ids:
+        description: 'パックの ID（空白区切り。空ならすべて）'
+        type: string
+        default: ''
+
+concurrency:
+  group: packs-${{ inputs.environment || 'staging' }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    environment: ${{ inputs.environment || 'staging' }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Checkout SRC
+        uses: actions/checkout@v7
+        with:
+          repository: 7474/SRC
+          ref: ${{ vars.SRC_REF || 'master' }}
+          path: srcsharp
+          sparse-checkout: SRC.Sharp/Content
+
+      # 元の配布物（SRC フルパッケージなど）は sha256 ごとにキャッシュし、配布元に何度も取りに行かない
+      - uses: actions/cache@v6
+        with:
+          path: out/cache
+          key: packs-source-${{ hashFiles('packs/*.json') }}
+          restore-keys: |
+            packs-source-
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Publish packs
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          ENV: ${{ inputs.environment || 'staging' }}
+          SRC_DIR: ${{ github.workspace }}/srcsharp
+          IDS: ${{ inputs.ids }}
+        run: |
+          npm ci
+          # shellcheck disable=SC2086
+          bash scripts/publish-packs.sh $IDS

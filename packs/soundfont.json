@@ -1,0 +1,11 @@
+{
+  "id": "soundfont",
+  "title": "MIDI の SoundFont（TimGM6mb）",
+  "description": "MIDI の BGM を Web 版で鳴らすための音色。シナリオや追加した素材に .sf2 があればそちらを使う。",
+  "source_name": "Debian の timgm6mb-soundfont（Tim Brechbill）",
+  "source_url": "https://packages.debian.org/source/sid/timgm6mb-soundfont",
+  "license": "GPL-2.0（著作権表示とライセンス文を同梱）",
+  "is_default": 1,
+  "priority": 5,
+  "source": { "type": "command", "command": ["bash", "scripts/make-soundfont.sh"] }
+}
