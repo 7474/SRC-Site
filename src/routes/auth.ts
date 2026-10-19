@@ -11,7 +11,7 @@ const LOGIN_COOKIE = 'login';
 export const auth = new Hono<AppEnv>();
 
 function safeNext(next: string | undefined): string {
-  return next && next.startsWith('/') && !next.startsWith('//') ? next : '/me';
+  return next && next.startsWith('/') && !next.startsWith('//') ? next : '/my';
 }
 
 function redirectUri(url: string): string {

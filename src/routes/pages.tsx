@@ -8,7 +8,7 @@ import { Rights, Terms } from '../views/about';
 import { ageConfirmed, canEdit, canView, getScenario, LIST_SELECT, requireUser, showR18 } from './common';
 import { verifyTurnstile } from '../lib/turnstile';
 import { canPresign } from '../lib/presign';
-import { HANDLE_PATTERN, now, parseJsonArray, RATINGS, RESERVED_SLUGS, SLUG_PATTERN } from '../lib/util';
+import { HANDLE_PATTERN, now, parseJsonArray, RATINGS, SLUG_PATTERN } from '../lib/util';
 import type { Child } from 'hono/jsx';
 
 export const pages = new Hono<AppEnv>();
@@ -56,23 +56,22 @@ pages.post('/prefs/age', async c => {
   return c.redirect(next);
 });
 
-// /s/:slug より先に置く（submit はシナリオの slug に使えない）
-pages.get('/s/submit', requireUser, c => {
+pages.get('/my/scenarios/new', requireUser, c => {
   if (!c.get('user')!.terms_accepted_at) {
-    return c.redirect('/me');
+    return c.redirect('/my');
   }
   return render(c, '投稿', <NewScenarioPage v={EMPTY_FORM} />);
 });
 
-pages.post('/s/submit', requireUser, async c => {
+pages.post('/my/scenarios/new', requireUser, async c => {
   const user = c.get('user')!;
   if (!user.terms_accepted_at) {
-    return c.redirect('/me');
+    return c.redirect('/my');
   }
   const v = readScenarioForm(await c.req.parseBody());
   const fail = (error: string) => render(c, '投稿', <NewScenarioPage v={v} error={error} />, 400);
-  if (!SLUG_PATTERN.test(v.slug) || RESERVED_SLUGS.has(v.slug)) {
-    return fail('ID は英小文字・数字・- の 3〜40 文字にしてください（先頭と末尾は英数字。submit は使えません）。');
+  if (!SLUG_PATTERN.test(v.slug)) {
+    return fail('ID は英小文字・数字・- の 3〜40 文字にしてください（先頭と末尾は英数字）。');
   }
   if (!v.title) {
     return fail('題名を入れてください。');
@@ -85,10 +84,10 @@ pages.post('/s/submit', requireUser, async c => {
     `INSERT INTO scenarios (slug, owner_id, title, author, description, license, rating, tags, visibility, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).bind(v.slug, user.id, v.title, v.author || null, v.description || null, v.license || null, v.rating, tagsJson(v.tags), v.visibility, t, t).run();
-  return c.redirect(`/s/${v.slug}/edit`);
+  return c.redirect(`/my/scenarios/${v.slug}`);
 });
 
-pages.get('/s/:slug', async c => {
+pages.get('/scenarios/:slug', async c => {
   const s = await getScenario(c, c.req.param('slug'));
   if (!s || !canView(c, s)) {
     return notFound(c);
@@ -118,7 +117,7 @@ pages.get('/s/:slug', async c => {
   ));
 });
 
-pages.post('/s/:slug/report', async c => {
+pages.post('/scenarios/:slug/report', async c => {
   const s = await getScenario(c, c.req.param('slug'));
   if (!s) {
     return notFound(c);
@@ -130,10 +129,10 @@ pages.post('/s/:slug/report', async c => {
   const reason = ['rights', 'rating', 'malware', 'other'].includes(form.reason as string) ? form.reason as string : 'other';
   await c.env.DB.prepare('INSERT INTO reports (scenario_id, reason, detail, contact, created_at) VALUES (?, ?, ?, ?, ?)')
     .bind(s.id, reason, String(form.detail ?? '').slice(0, 2000), String(form.contact ?? '').slice(0, 200) || null, now()).run();
-  return c.redirect(`/s/${s.slug}?reported=1`);
+  return c.redirect(`/scenarios/${s.slug}?reported=1`);
 });
 
-pages.get('/u/:handle', async c => {
+pages.get('/users/:handle', async c => {
   const handle = c.req.param('handle');
   const items = (await c.env.DB.prepare(`${LIST_SELECT} WHERE u.handle = ? AND s.hidden = 0 AND s.visibility = 'public' AND s.latest_version IS NOT NULL ORDER BY s.updated_at DESC LIMIT 100`)
     .bind(handle).all<ListItem>()).results;
@@ -164,13 +163,13 @@ pages.get('/about/rights', c => render(c, '権利者の方へ', <Rights />));
 
 // ── ログインが要る頁 ──
 
-pages.get('/me', requireUser, async c => {
+pages.get('/my', requireUser, async c => {
   const user = c.get('user')!;
   const items = (await c.env.DB.prepare(`${LIST_SELECT} WHERE s.owner_id = ? ORDER BY s.updated_at DESC`).bind(user.id).all<any>()).results;
   return render(c, '設定', <MePage handle={user.handle} termsAccepted={Boolean(user.terms_accepted_at)} items={items} saved={c.req.query('saved') === '1'} />);
 });
 
-pages.post('/me', requireUser, async c => {
+pages.post('/my', requireUser, async c => {
   const user = c.get('user')!;
   const form = await c.req.parseBody();
   const handle = String(form.handle ?? '').trim();
@@ -186,7 +185,7 @@ pages.post('/me', requireUser, async c => {
   const terms = form.terms === '1' || Boolean(user.terms_accepted_at);
   await c.env.DB.prepare('UPDATE users SET handle = ?, terms_accepted_at = COALESCE(terms_accepted_at, ?) WHERE id = ?')
     .bind(handle, terms ? now() : null, user.id).run();
-  return c.redirect('/me?saved=1');
+  return c.redirect('/my?saved=1');
 });
 
 const EMPTY_FORM: ScenarioForm = { slug: '', title: '', author: '', description: '', license: '', rating: 'general', tags: '', visibility: 'public' };
@@ -227,9 +226,9 @@ async function editPage(c: Context<AppEnv>, slug: string, extra: { error?: strin
   ), extra.error ? 400 : 200);
 }
 
-pages.get('/s/:slug/edit', requireUser, c => editPage(c, c.req.param('slug'), { saved: c.req.query('saved') === '1' }));
+pages.get('/my/scenarios/:slug', requireUser, c => editPage(c, c.req.param('slug'), { saved: c.req.query('saved') === '1' }));
 
-pages.post('/s/:slug/edit', requireUser, async c => {
+pages.post('/my/scenarios/:slug', requireUser, async c => {
   const s = await getScenario(c, c.req.param('slug'));
   if (!s || !canEdit(c, s)) {
     return notFound(c);
@@ -242,10 +241,10 @@ pages.post('/s/:slug/edit', requireUser, async c => {
   await c.env.DB.prepare(
     'UPDATE scenarios SET title = ?, author = ?, description = ?, license = ?, rating = ?, tags = ?, visibility = ?, updated_at = ? WHERE id = ?',
   ).bind(v.title, v.author || null, v.description || null, v.license || null, v.rating, tagsJson(v.tags), v.visibility, now(), s.id).run();
-  return c.redirect(`/s/${s.slug}/edit?saved=1`);
+  return c.redirect(`/my/scenarios/${s.slug}?saved=1`);
 });
 
-pages.post('/s/:slug/delete', requireUser, async c => {
+pages.post('/my/scenarios/:slug/delete', requireUser, async c => {
   const s = await getScenario(c, c.req.param('slug'));
   if (!s || !canEdit(c, s)) {
     return notFound(c);
@@ -260,7 +259,7 @@ pages.post('/s/:slug/delete', requireUser, async c => {
     c.env.DB.prepare('UPDATE reports SET scenario_id = NULL WHERE scenario_id = ?').bind(s.id),
     c.env.DB.prepare('DELETE FROM scenarios WHERE id = ?').bind(s.id),
   ]);
-  return c.redirect('/me');
+  return c.redirect('/my');
 });
 
 async function versionForEdit(c: Context<AppEnv>, id: string) {
@@ -272,7 +271,7 @@ async function versionForEdit(c: Context<AppEnv>, id: string) {
   return s && canEdit(c, s) ? { v, s } : null;
 }
 
-pages.post('/versions/:id/settings', requireUser, async c => {
+pages.post('/my/versions/:id/settings', requireUser, async c => {
   const found = await versionForEdit(c, c.req.param('id'));
   if (!found) {
     return notFound(c);
@@ -285,10 +284,10 @@ pages.post('/versions/:id/settings', requireUser, async c => {
     return editPage(c, found.s.slug, { error: 'パスに .. は使えません。' });
   }
   await c.env.DB.prepare('UPDATE versions SET root = ?, eve = ? WHERE id = ?').bind(root, eve, found.v.id).run();
-  return c.redirect(`/s/${found.s.slug}/edit?saved=1`);
+  return c.redirect(`/my/scenarios/${found.s.slug}?saved=1`);
 });
 
-pages.post('/versions/:id/packs', requireUser, async c => {
+pages.post('/my/versions/:id/packs', requireUser, async c => {
   const found = await versionForEdit(c, c.req.param('id'));
   if (!found) {
     return notFound(c);
@@ -299,10 +298,10 @@ pages.post('/versions/:id/packs', requireUser, async c => {
   const requires = packs.filter(p => !p.is_default && chosen.has(p.id)).map(p => p.id);
   const excludes = packs.filter(p => p.is_default && !chosen.has(p.id)).map(p => p.id);
   await c.env.DB.prepare('UPDATE versions SET requires = ?, excludes = ? WHERE id = ?').bind(JSON.stringify(requires), JSON.stringify(excludes), found.v.id).run();
-  return c.redirect(`/s/${found.s.slug}/edit?saved=1`);
+  return c.redirect(`/my/scenarios/${found.s.slug}?saved=1`);
 });
 
-pages.post('/versions/:id/delete', requireUser, async c => {
+pages.post('/my/versions/:id/delete', requireUser, async c => {
   const found = await versionForEdit(c, c.req.param('id'));
   if (!found) {
     return notFound(c);
@@ -313,5 +312,5 @@ pages.post('/versions/:id/delete', requireUser, async c => {
   await c.env.DB.prepare(
     `UPDATE scenarios SET latest_version = (SELECT id FROM versions WHERE scenario_id = ?1 AND state = 'published' ORDER BY number DESC LIMIT 1), updated_at = ?2 WHERE id = ?1`,
   ).bind(found.s.id, now()).run();
-  return c.redirect(`/s/${found.s.slug}/edit?saved=1`);
+  return c.redirect(`/my/scenarios/${found.s.slug}?saved=1`);
 });

@@ -1,9 +1,10 @@
 import { formatDate } from '../lib/util';
 
 export type ReportItem = { id: number; reason: string; detail: string | null; contact: string | null; created_at: number; slug: string | null; title: string | null; pack_id: string | null; hidden: number | null };
+export type HiddenItem = { slug: string; title: string; hidden_reason: string | null };
 export type UserItem = { id: number; handle: string; role: string; suspended: number; created_at: number };
 
-export function AdminPage(props: { reports: ReportItem[]; users: UserItem[]; message?: string }) {
+export function AdminPage(props: { reports: ReportItem[]; users: UserItem[]; hidden: HiddenItem[]; message?: string }) {
   return (
     <>
       <section>
@@ -17,7 +18,7 @@ export function AdminPage(props: { reports: ReportItem[]; users: UserItem[]; mes
               {props.reports.map(r => (
                 <tr>
                   <td>{formatDate(r.created_at)}</td>
-                  <td>{r.slug ? <a href={`/s/${r.slug}`}>{r.title}</a> : r.pack_id ? <a href={`/packs/${r.pack_id}`}>{r.pack_id}</a> : '（削除済み）'}</td>
+                  <td>{r.slug ? <a href={`/scenarios/${r.slug}`}>{r.title}</a> : r.pack_id ? <a href={`/packs/${r.pack_id}`}>{r.pack_id}</a> : '（削除済み）'}</td>
                   <td>{r.reason}</td>
                   <td class="pre">{r.detail}{r.contact && `\n連絡先: ${r.contact}`}</td>
                   <td>
@@ -36,10 +37,17 @@ export function AdminPage(props: { reports: ReportItem[]; users: UserItem[]; mes
         )}
       </section>
       <section>
-        <h2>シナリオの公開の再開</h2>
-        <form method="post" action="/admin/scenarios/unhide" class="compact">
-          <input name="slug" placeholder="ID" required /> <button type="submit">再開する</button>
-        </form>
+        <h2>公開を止めているシナリオ</h2>
+        {props.hidden.length === 0 ? <p class="muted">ありません。</p> : (
+          <ul>
+            {props.hidden.map(h => (
+              <li>
+                <a href={`/scenarios/${h.slug}`}>{h.title}</a>（{h.slug}）{h.hidden_reason && `: ${h.hidden_reason}`}
+                <form method="post" action={`/admin/scenarios/${h.slug}/unhide`} class="inline"><button type="submit" class="link">再開する</button></form>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
       <section>
         <h2>パックのファイルの取り下げ</h2>
@@ -59,7 +67,7 @@ export function AdminPage(props: { reports: ReportItem[]; users: UserItem[]; mes
           <tbody>
             {props.users.map(u => (
               <tr>
-                <td><a href={`/u/${u.handle}`}>{u.handle}</a></td>
+                <td><a href={`/users/${u.handle}`}>{u.handle}</a></td>
                 <td>{u.role}{u.suspended ? '（停止）' : ''}</td>
                 <td>{formatDate(u.created_at)}</td>
                 <td>

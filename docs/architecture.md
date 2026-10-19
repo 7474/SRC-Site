@@ -72,24 +72,85 @@ src-site/
 
 ## パスと応答
 
-| パス | 内容 | 認証 | 主なヘッダ |
-|---|---|---|---|
-| `GET /` | 新着・人気・検索 | 不要 | `Cache-Control: public, max-age=60` |
-| `GET /s/:slug` | シナリオの詳細（説明・版・文書・必要なパック・足りない素材・通報） | 不要 | 同上 |
-| `GET /u/:handle` | 投稿者の頁 | 不要 | 同上 |
-| `GET /packs/:id` | 共有パックの頁（出典・条件・取り下げの記録） | 不要 | 同上 |
-| `GET /s/submit` `/s/:slug/edit` | 投稿・編集 | 要 | `Cache-Control: private` |
-| `GET /admin/*` | 運営（通報・取り下げ・停止） | 運営 | 同上 |
-| `GET /play/*` | SRC#Web | 不要 | `Cross-Origin-Opener-Policy: same-origin`、`Cross-Origin-Embedder-Policy: require-corp` |
-| `GET /api/catalog.json` | 公開中のシナリオとパックのカタログ | 不要 | `Cross-Origin-Resource-Policy: same-origin`、`Cache-Control: public, max-age=60` |
-| `GET /files/scenarios/:slug/:version.zip` | シナリオの zip（R2） | 不要 | Range・ETag、`Cache-Control: public, max-age=31536000, immutable` |
-| `GET /files/packs/:id/:version.zip` | 共有パックの zip（R2） | 不要 | 同上 |
-| `GET /dl/:slug` | 最新版のダウンロード | 不要 | `Content-Disposition: attachment` |
-| `GET /auth/login` `/auth/callback` `POST /auth/logout` | ログイン | ― | ― |
-| `POST /api/uploads` ほか | 投稿の API（下の表） | 要 | ― |
-| `POST /api/reports` | 通報 | 不要（Turnstile） | ― |
+### 方針
 
-- クロスオリジン分離は `/play/` だけ。ポータルの画面は外部の画像（Google のアイコンなど）を出すので分離しない
+- 最上位の段は決まった語（下の表）だけにする。利用者が決める値（シナリオの slug・ハンドル・パックの ID）は必ず 2 段目以降に置く
+- 同じ段に「利用者が決める値」と「決まった語」を並べない。作る・直す・消すは本人の区分（`/my/`）に置き、公開の区分（`/scenarios/:slug` など）の下に `new`・`edit` のような語を作らない。予約語は要らない
+- 区分ごとに認証を揃える。HTML の画面はログインの状態を出すので、どの区分も `private, no-store`。共有のキャッシュに載せるのは `/api/catalog*`・`/files/`・静的アセット
+- 資源の名前は英語の複数形（`scenarios`・`users`・`packs`・`versions`）
+- 状態を変えるのは `POST` だけ。動詞（`report`・`delete` など）は最後の段に置く
+- HTML の画面と JSON の API（`/api/`）と不変のファイル（`/files/`）を分ける
+
+### 最上位の区分
+
+| 区分 | 中身 | 認証 | キャッシュ |
+|---|---|---|---|
+| `/`・`/scenarios/`・`/users/`・`/packs/`・`/about/` | 公開の画面 | 不要 | `private, no-store` |
+| `/my/` | 本人の画面（設定・投稿・編集） | 要 | `private, no-store` |
+| `/admin/` | 運営の画面 | 運営 | `private, no-store` |
+| `/auth/` | ログイン | ― | ― |
+| `/prefs/` | ログインなしの好み（年齢の確認・R18 の表示）を Cookie に置く | 不要 | ― |
+| `/api/` | JSON（カタログ・投稿の API） | カタログは不要、投稿は要 | カタログは `public, max-age=60` |
+| `/files/` | zip（版を含めて不変） | 不要 | `public, max-age=31536000, immutable` |
+| `/play/` | SRC#Web（クロスオリジン分離） | 不要 | 静的アセット |
+| `/static/` | ポータルの CSS・JS | 不要 | 静的アセット |
+
+### 公開の画面
+
+| パス | 内容 |
+|---|---|
+| `GET /` | 新着・検索（`?q=`。題名・作者・タグ・ハンドル） |
+| `GET /scenarios/:slug` | シナリオの詳細（説明・版・必要なパック・プレイ・ダウンロード・通報） |
+| `GET /scenarios/:slug/download` | 最新版の zip（`Content-Disposition: attachment`） |
+| `POST /scenarios/:slug/report` | 通報（ログイン不要。Turnstile） |
+| `GET /users/:handle` | 投稿者の頁 |
+| `GET /packs` | 共有パックの一覧 |
+| `GET /packs/:id` | 共有パックの頁（出典・条件・取り下げの記録） |
+| `GET /about/terms` | 規約 |
+| `GET /about/rights` | 権利者の方へ（申し出の窓口・取り下げの記録） |
+| `GET /play/?play=:slug` | SRC#Web でそのシナリオを始める |
+
+### 本人の画面（`/my/`）
+
+| パス | 内容 |
+|---|---|
+| `GET /my` `POST /my` | 設定（ハンドル・規約への同意）と自分のシナリオの一覧 |
+| `GET /my/scenarios/new` `POST /my/scenarios/new` | シナリオを作る |
+| `GET /my/scenarios/:slug` `POST /my/scenarios/:slug` | シナリオを直す・版を上げる |
+| `POST /my/scenarios/:slug/delete` | シナリオを消す |
+| `POST /my/versions/:id/settings` | 版の `root`・`eve` を直す |
+| `POST /my/versions/:id/packs` | 版が使うパック（`requires`・`excludes`）を直す |
+| `POST /my/versions/:id/delete` | 版を消す |
+
+### 運営の画面（`/admin/`）
+
+| パス | 内容 |
+|---|---|
+| `GET /admin` | 通報・公開を止めているシナリオ・利用者の一覧 |
+| `POST /admin/scenarios/:slug/hide` `POST /admin/scenarios/:slug/unhide` | 公開を止める・再開する |
+| `POST /admin/reports/:id/close` | 通報を対応済みにする |
+| `POST /admin/users/:id/suspend` `POST /admin/users/:id/unsuspend` | 利用者を止める・戻す |
+| `POST /admin/takedowns` | パック（のファイル）の取り下げを記録する |
+
+### ログイン・好み
+
+| パス | 内容 |
+|---|---|
+| `GET /auth/login?next=` `GET /auth/callback` `POST /auth/logout` | Google のログイン |
+| `GET /auth/dev` | ローカル開発だけ（`DEV_LOGIN`） |
+| `POST /prefs/age` `POST /prefs/r18` | 年齢の確認、R18 を一覧に出すか |
+
+### JSON とファイル
+
+| パス | 内容 |
+|---|---|
+| `GET /api/catalog.json` | 公開中のシナリオと、それらが使うパックのカタログ |
+| `GET /api/catalog/:slug.json` | 1 本のシナリオと、それが使うパックのカタログ（SRC#Web の `playCatalog`） |
+| `POST /api/scenarios/:slug/versions` ほか | 投稿の API（下の「投稿」） |
+| `GET /files/scenarios/:slug/:number.zip` | シナリオの版の zip（R2。Range・ETag） |
+| `GET /files/packs/:id/:version.zip` | 共有パックの zip（R2。Range・ETag） |
+
+- クロスオリジン分離（COOP・COEP）は `/play/` だけ。ポータルの画面は外部の画像（Google のアイコンなど）を出すので分離しない
 - zip の URL は版を含めて不変にし、長くキャッシュする（版を変えると URL が変わる）
 
 ## ログイン（Google）
@@ -99,7 +160,7 @@ sequenceDiagram
   participant B as ブラウザ
   participant W as Worker
   participant G as Google
-  B->>W: GET /auth/login?next=/s/submit
+  B->>W: GET /auth/login?next=/my/scenarios/new
   W->>W: state・nonce・PKCE の verifier を作り、短命の Cookie（署名付き）に入れる
   W-->>B: 302 accounts.google.com/o/oauth2/v2/auth<br/>scope=openid email profile, code_challenge(S256), state, nonce
   B->>G: ログイン・同意
@@ -243,13 +304,12 @@ CREATE TABLE counters (
 
 | API | 内容 |
 |---|---|
-| `POST /api/scenarios` | シナリオを作る（slug・題名など）。slug は英数字と `-` |
-| `PATCH /api/scenarios/:slug` | 題名・説明・作者・ライセンス・区分・タグ・公開状態を変える |
-| `POST /api/scenarios/:slug/versions` | 版を作り、署名付き URL を返す。要求: 大きさ・sha256。応答: `uploadUrl`（PUT、15 分）・`versionId` |
+| `POST /api/scenarios/:slug/versions` | 版を作り、アップロード先を返す。要求: 大きさ・sha256。応答: `uploadUrl`（署名付き URL、PUT、15 分。Secret が無ければ下の `upload`）・`versionId` |
+| `PUT /api/versions/:id/upload` | Worker を通すアップロード（署名付き URL を作れないとき。100 MB まで） |
 | `POST /api/versions/:id/complete` | アップロードが済んだことを知らせる。検査を Queues に積む |
 | `GET /api/versions/:id` | 版の状態（検査中・公開・弾いた理由）。投稿の画面が数秒おきに見る |
-| `PATCH /api/versions/:id` | `root`・`eve`・`requires`・`excludes` を直す（検査の結果から候補を出す） |
-| `DELETE /api/versions/:id` | 版を消す |
+
+シナリオの作成・変更・削除と版の設定は HTML のフォーム（`/my/`）で行う。
 
 - 署名付き URL は Worker が [aws4fetch](https://github.com/mhart/aws4fetch) で作る（R2 の S3 互換 API のアクセスキーは Worker の Secret に置き、そのバケットの書き込みだけを許す）。`Content-Type: application/zip` を署名に含め、他の種類は受け付けない（[署名付き URL](https://developers.cloudflare.com/r2/api/s3/presigned-urls/)）
 - アップロードは Worker を通らないので、Workers の要求の大きさの制限（Free・Pro で 100 MB）を受けない

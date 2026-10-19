@@ -34,7 +34,7 @@ files.on(['GET', 'HEAD'], '/files/packs/:id/:file', async c => {
 });
 
 // 最新の版のダウンロード
-files.get('/dl/:slug', async c => {
+files.get('/scenarios/:slug/download', async c => {
   const slug = c.req.param('slug');
   const v = await c.env.DB.prepare(
     `SELECT v.r2_key, v.number FROM scenarios s JOIN versions v ON v.id = s.latest_version

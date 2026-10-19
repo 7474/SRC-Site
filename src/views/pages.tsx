@@ -15,7 +15,7 @@ export function ScenarioList(props: { items: ListItem[]; empty?: string }) {
     <ul class="scenario-list">
       {props.items.map(s => (
         <li>
-          <a class="title" href={`/s/${s.slug}`}>{s.title}</a> <RatingBadge rating={s.rating} />
+          <a class="title" href={`/scenarios/${s.slug}`}>{s.title}</a> <RatingBadge rating={s.rating} />
           <div class="meta">
             {s.author ?? s.handle} ・ {formatDate(s.updated_at)}{s.size != null && <> ・ {formatSize(s.size)}</>}
             {s.plays ? <> ・ {s.plays} 回プレイ</> : null}
@@ -90,13 +90,13 @@ export function ScenarioPage(props: {
   return (
     <article class="scenario">
       <h1>{s.title} <RatingBadge rating={s.rating} /></h1>
-      <p class="meta">作者: {s.author ?? s.handle}（投稿: <a href={`/u/${s.handle}`}>{s.handle}</a>）{s.visibility === 'unlisted' && ' ・ 限定公開'}</p>
+      <p class="meta">作者: {s.author ?? s.handle}（投稿: <a href={`/users/${s.handle}`}>{s.handle}</a>）{s.visibility === 'unlisted' && ' ・ 限定公開'}</p>
       {s.hidden ? <Notice kind="error">運営により公開を止めています。{s.hidden_reason}</Notice> : null}
-      {props.canEdit && <p><a class="button" href={`/s/${s.slug}/edit`}>編集・新しい版を上げる</a></p>}
+      {props.canEdit && <p><a class="button" href={`/my/scenarios/${s.slug}`}>編集・新しい版を上げる</a></p>}
       {latest ? (
         <div class="actions">
           <a class="button primary" href={`/play/?play=${encodeURIComponent(s.slug)}`}>Web 版で遊ぶ</a>
-          <a class="button" href={`/dl/${s.slug}`}>ダウンロード（{formatSize(latest.size)}）</a>
+          <a class="button" href={`/scenarios/${s.slug}/download`}>ダウンロード（{formatSize(latest.size)}）</a>
         </div>
       ) : (
         <p class="muted">公開している版がありません。</p>
@@ -129,7 +129,7 @@ export function ScenarioPage(props: {
       <details class="report">
         <summary>通報する</summary>
         {props.reported ? <Notice>通報を受け付けました。</Notice> : (
-          <form method="post" action={`/s/${s.slug}/report`}>
+          <form method="post" action={`/scenarios/${s.slug}/report`}>
             <label>理由
               <select name="reason">
                 <option value="rights">権利の侵害（自分の作品・素材が無断で使われている など）</option>
@@ -177,7 +177,7 @@ export function MePage(props: { handle: string; termsAccepted: boolean; items: (
         <h1>設定</h1>
         {props.error && <Notice kind="error">{props.error}</Notice>}
         {props.saved && <Notice>保存しました。</Notice>}
-        <form method="post" action="/me">
+        <form method="post" action="/my">
           <label>表示名（英数字・_・-、3〜24 文字。投稿者の頁の URL にも使います）
             <input name="handle" value={props.handle} pattern="[A-Za-z0-9_\-]{3,24}" required />
           </label>
@@ -191,15 +191,15 @@ export function MePage(props: { handle: string; termsAccepted: boolean; items: (
       </section>
       <section>
         <h2>投稿したシナリオ</h2>
-        <p><a class="button" href="/s/submit">新しく投稿する</a></p>
+        <p><a class="button" href="/my/scenarios/new">新しく投稿する</a></p>
         {props.items.length === 0 ? <p class="muted">まだありません。</p> : (
           <ul class="scenario-list">
             {props.items.map(s => (
               <li>
-                <a class="title" href={`/s/${s.slug}`}>{s.title}</a> <RatingBadge rating={s.rating} />
+                <a class="title" href={`/scenarios/${s.slug}`}>{s.title}</a> <RatingBadge rating={s.rating} />
                 {s.visibility !== 'public' && <span class="badge">{s.visibility === 'unlisted' ? '限定公開' : '非公開'}</span>}
                 {s.hidden ? <span class="badge rating-r18">運営が停止</span> : null}
-                {' '}<a href={`/s/${s.slug}/edit`}>編集</a>
+                {' '}<a href={`/my/scenarios/${s.slug}`}>編集</a>
               </li>
             ))}
           </ul>
@@ -247,7 +247,7 @@ export function NewScenarioPage(props: { v: ScenarioForm; error?: string }) {
       <h1>シナリオを投稿する</h1>
       <p>まずシナリオの情報を登録し、次の画面で zip を上げます。投稿したものはすぐに公開されます（運営の確認はありません）。内容の責任は投稿者にあります（<a href="/about/terms">利用規約</a>）。</p>
       {props.error && <Notice kind="error">{props.error}</Notice>}
-      <form method="post" action="/s/submit" class="form">
+      <form method="post" action="/my/scenarios/new" class="form">
         <ScenarioFields v={props.v} isNew={true} />
         <button type="submit">次へ</button>
       </form>
@@ -266,7 +266,7 @@ export function EditPage(props: {
     <>
       <section>
         <h1>{props.v.title} の編集</h1>
-        <p><a href={`/s/${props.slug}`}>シナリオの頁へ</a></p>
+        <p><a href={`/scenarios/${props.slug}`}>シナリオの頁へ</a></p>
         {props.error && <Notice kind="error">{props.error}</Notice>}
         {props.saved && <Notice>保存しました。</Notice>}
       </section>
@@ -296,7 +296,7 @@ export function EditPage(props: {
                 <td>{formatDate(v.created_at)}</td>
                 <td>
                   {v.state === 'published' && (
-                    <form method="post" action={`/versions/${v.id}/settings`} class="compact">
+                    <form method="post" action={`/my/versions/${v.id}/settings`} class="compact">
                       <label>root<input name="root" value={v.root ?? ''} /></label>
                       <label>.eve<input name="eve" value={v.eve ?? ''} /></label>
                       <button type="submit">変える</button>
@@ -305,7 +305,7 @@ export function EditPage(props: {
                 </td>
                 <td>
                   {(v.state === 'published' || v.state === 'rejected') && (
-                    <form method="post" action={`/versions/${v.id}/delete`} onsubmit="return confirm('この版を消しますか？')">
+                    <form method="post" action={`/my/versions/${v.id}/delete`} onsubmit="return confirm('この版を消しますか？')">
                       <button type="submit" class="link">消す</button>
                     </form>
                   )}
@@ -318,7 +318,7 @@ export function EditPage(props: {
       {latestPublished && (
         <section>
           <h2>重ねる共有パック（最新の版）</h2>
-          <form method="post" action={`/versions/${latestPublished.id}/packs`} class="form">
+          <form method="post" action={`/my/versions/${latestPublished.id}/packs`} class="form">
             {props.packs.map(p => (
               <label class="check">
                 <input type="checkbox" name="pack" value={p.id} checked={p.is_default ? !excludes.includes(p.id) : requires.includes(p.id)} />
@@ -331,14 +331,14 @@ export function EditPage(props: {
       )}
       <section>
         <h2>シナリオの情報</h2>
-        <form method="post" action={`/s/${props.slug}/edit`} class="form">
+        <form method="post" action={`/my/scenarios/${props.slug}`} class="form">
           <ScenarioFields v={props.v} isNew={false} />
           <button type="submit">保存</button>
         </form>
       </section>
       <section>
         <h2>シナリオを消す</h2>
-        <form method="post" action={`/s/${props.slug}/delete`} onsubmit="return confirm('シナリオとすべての版を消します。よろしいですか？')">
+        <form method="post" action={`/my/scenarios/${props.slug}/delete`} onsubmit="return confirm('シナリオとすべての版を消します。よろしいですか？')">
           <button type="submit" class="danger">消す</button>
         </form>
       </section>

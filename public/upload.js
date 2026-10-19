@@ -1,4 +1,4 @@
-// 新しい版のアップロード（/s/:slug/edit）。
+// 新しい版のアップロード（/my/scenarios/:slug）。
 // 1. 大きさと sha256 を送って版を作る → 2. 返った URL へ PUT（R2 へ直接） → 3. 完了を知らせる → 4. 検査が済むまで状態を見る
 (() => {
   // SHA-256（FIPS 180-4）
@@ -120,7 +120,7 @@
         const v = await json(await fetch(`/api/versions/${created.versionId}`));
         if (v.state === 'published') {
           show(`第 ${v.number} 版を公開しました。`);
-          location.href = `/s/${encodeURIComponent(v.slug)}/edit?saved=1`;
+          location.href = `/my/scenarios/${encodeURIComponent(v.slug)}?saved=1`;
           return;
         }
         if (v.state === 'rejected') {

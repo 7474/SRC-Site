@@ -79,8 +79,6 @@ export function parseJsonArray(text: string | null | undefined): string[] {
 }
 
 /** URL・SRC#Web の play に使う名前（英小文字・数字・-、3〜40 文字） */
-// /s/ の下のほかのパスと重なるため、シナリオの slug に使えない
-export const RESERVED_SLUGS = new Set(['submit']);
 export const SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]{1,38}[a-z0-9])$/;
 /** 表示名（URL にも使う。英数字・_・-、3〜24 文字） */
 export const HANDLE_PATTERN = /^[A-Za-z0-9_-]{3,24}$/;
