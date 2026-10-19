@@ -20,7 +20,7 @@ export function Layout(props: { title: string; siteName: string; user: User | nu
             <input type="search" name="q" placeholder="シナリオを探す" aria-label="シナリオを探す" />
           </form>
           <nav>
-            <a href="/play/">Web 版</a>
+            <a href="/play/">SRC#Web で遊ぶ</a>
             {user ? (
               <>
                 <a href="/my/scenarios/new">投稿</a>

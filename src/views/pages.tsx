@@ -38,7 +38,7 @@ export function Home(props: { q: string; latest: ListItem[]; popular: ListItem[]
       ) : (
         <>
           <section class="intro">
-            <p>SRC（Simulation RPG Construction）のシナリオを投稿・配布するサイトです。ブラウザの Web 版（SRC#Web）ですぐ遊べ、zip をダウンロードして手元の SRC・SRC# でも遊べます。</p>
+            <p>SRC（Simulation RPG Construction）のシナリオを投稿・配布するサイトです。ブラウザ版の SRC#Web ですぐ遊べ、zip をダウンロードして手元の SRC・SRC# でも遊べます。</p>
           </section>
           <section>
             <h2>人気（7 日間）</h2>
@@ -95,7 +95,7 @@ export function ScenarioPage(props: {
       {props.canEdit && <p><a class="button" href={`/my/scenarios/${s.slug}`}>編集・新しい版を上げる</a></p>}
       {latest ? (
         <div class="actions">
-          <a class="button primary" href={`/play/?play=${encodeURIComponent(s.slug)}`}>Web 版で遊ぶ</a>
+          <a class="button primary" href={`/play/?play=${encodeURIComponent(s.slug)}`}>SRC#Web で遊ぶ</a>
           <a class="button" href={`/scenarios/${s.slug}/download`}>ダウンロード（{formatSize(latest.size)}）</a>
         </div>
       ) : (
@@ -108,15 +108,15 @@ export function ScenarioPage(props: {
         <section>
           <h2>中身</h2>
           <p>{latest.manifest.files} ファイル・展開後 {formatSize(latest.manifest.totalSize)}。最初に実行するシナリオ: {latest.eve ?? '（選ぶ）'}</p>
-          {latest.manifest.documents.length > 0 && <p>同梱の文書: {latest.manifest.documents.join('、')}（Web 版の「文書」から読めます）</p>}
+          {latest.manifest.documents.length > 0 && <p>同梱の文書: {latest.manifest.documents.join('、')}（SRC#Web の「文書」から読めます）</p>}
         </section>
       )}
       <section>
-        <h2>重ねる共有パック</h2>
+        <h2>一緒に使う共有パック</h2>
         {props.packs.length === 0 ? <p class="muted">ありません。</p> : (
           <ul>{props.packs.map(p => <li><a href={`/packs/${p.id}`}>{p.title}</a>（{p.source_name}）</li>)}</ul>
         )}
-        <p class="muted small">BGM（版権曲など）はサイトでは配っていません。お持ちの MIDI・MP3 を Web 版の「素材を追加」で入れると、どのシナリオでも使えます。</p>
+        <p class="muted small">BGM（版権曲など）はサイトでは配っていません。お持ちの MIDI・MP3 を zip にして SRC#Web の「アーカイブを追加」の素材の欄から入れると、どのシナリオでも使えます。</p>
       </section>
       <section>
         <h2>版</h2>
@@ -216,7 +216,7 @@ export function ScenarioFields(props: { v: ScenarioForm; isNew: boolean }) {
   return (
     <>
       {props.isNew && (
-        <label>ID（URL と Web 版の起動に使う。英小文字・数字・-、3〜40 文字。後から変えられません）
+        <label>ID（URL と SRC#Web の起動に使う。英小文字・数字・-、3〜40 文字。後から変えられません）
           <input name="slug" value={v.slug} pattern="[a-z0-9][a-z0-9\-]{1,38}[a-z0-9]" required />
         </label>
       )}
@@ -286,7 +286,7 @@ export function EditPage(props: {
       <section>
         <h2>版</h2>
         <table class="versions">
-          <thead><tr><th>版</th><th>状態</th><th>大きさ</th><th>日時</th><th>最初の .eve・重ねるパック</th><th></th></tr></thead>
+          <thead><tr><th>版</th><th>状態</th><th>大きさ</th><th>日時</th><th>最初の .eve・使うパック</th><th></th></tr></thead>
           <tbody>
             {props.versions.map(v => (
               <tr>
@@ -317,7 +317,7 @@ export function EditPage(props: {
       </section>
       {latestPublished && (
         <section>
-          <h2>重ねる共有パック（最新の版）</h2>
+          <h2>一緒に使う共有パック（最新の版）</h2>
           <form method="post" action={`/my/versions/${latestPublished.id}/packs`} class="form">
             {props.packs.map(p => (
               <label class="check">
@@ -354,7 +354,7 @@ export function PacksPage(props: { packs: { id: string; title: string; source_na
   return (
     <section>
       <h1>共有パック</h1>
-      <p>シナリオに重ねて使う素材です。「既定」のものはすべてのシナリオに重ねます（投稿者が外せます）。</p>
+      <p>シナリオと一緒に読み込んで使う素材です。「既定」のものはすべてのシナリオで使います（投稿者が外せます）。</p>
       <ul>
         {props.packs.map(p => (
           <li><a href={`/packs/${p.id}`}>{p.title}</a>（{p.source_name}・{formatSize(p.size)}）{p.is_default ? ' 既定' : ''}{p.withdrawn ? ' 取り下げ' : ''}</li>
@@ -378,7 +378,7 @@ export function PackPage(props: {
         <dt>配布元</dt><dd>{p.source_url ? <a href={p.source_url}>{p.source_name}</a> : p.source_name}</dd>
         <dt>条件</dt><dd class="pre">{p.license}</dd>
         <dt>大きさ</dt><dd>{formatSize(p.size)}（版 {p.version}・{formatDate(p.updated_at)}）</dd>
-        <dt>既定</dt><dd>{p.is_default ? 'すべてのシナリオに重ねる' : '投稿者が選んだシナリオだけ'}</dd>
+        <dt>既定</dt><dd>{p.is_default ? 'すべてのシナリオで使う' : '投稿者が選んだシナリオだけで使う'}</dd>
       </dl>
       <h2>取り下げた記録</h2>
       {props.takedowns.length === 0 ? <p class="muted">ありません。</p> : (

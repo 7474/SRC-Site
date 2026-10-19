@@ -4,7 +4,7 @@ export function Terms() {
     <article class="doc">
       <h1>利用規約</h1>
       <h2>このサイトについて</h2>
-      <p>SRC-Site は、SRC（Simulation RPG Construction）のシナリオを投稿・配布するサイトです。シナリオはブラウザの Web 版（SRC#Web）で遊べるほか、zip をダウンロードできます。</p>
+      <p>SRC-Site は、SRC（Simulation RPG Construction）のシナリオを投稿・配布するサイトです。シナリオはブラウザ版の SRC#Web で遊べるほか、zip をダウンロードできます。</p>
       <h2>投稿</h2>
       <ul>
         <li>投稿には Google のアカウントでのログインと、この規約への同意が必要です。</li>
