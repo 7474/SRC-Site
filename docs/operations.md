@@ -5,10 +5,10 @@
 | 環境 | Worker | ドメイン | D1・R2 | Queue |
 |---|---|---|---|---|
 | ローカル | `src-site-dev` | `http://localhost:8787` | `src-site-dev`（`--local`） | `src-site-dev-inspect` |
-| 確認 | `src-site-staging` | `src-site-staging.<サブドメイン>.workers.dev` | `src-site-staging` | `src-site-staging-inspect` |
+| 確認 | `src-site-staging` | `src-site-staging.koudenpa.workers.dev` | `src-site-staging` | `src-site-staging-inspect` |
 | 本番 | `src-site` | `src.koudenpa.net`（Workers のカスタムドメイン） | `src-site` | `src-site-inspect` |
 
-- Workers Paid が要る（zip の検査の CPU 時間 `limits.cpu_ms`）
+- 大きい zip の検査には Workers Paid が要る（Free は 1 要求の CPU が 10 ms）。Paid にしたら `wrangler.jsonc` の `limits.cpu_ms` のコメントを外す。Free のままでは `limits` を書くと配信が失敗する
 - カスタムドメインは `wrangler deploy` が DNS とともに作る（`koudenpa.net` が同じアカウントの Cloudflare のゾーンであること）。[Custom Domains](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/)
 
 ## 初めの準備
@@ -29,6 +29,8 @@
 ## Secret
 
 ### Worker（`wrangler secret put --env <環境>`）
+
+値が `PLACEHOLDER` の Secret は、無いものとして扱う（設定前の仮の値）。
 
 | 名前 | 内容 | 無いとき |
 |---|---|---|
