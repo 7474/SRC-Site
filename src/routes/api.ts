@@ -108,8 +108,8 @@ api.post('/scenarios/:slug/versions', async c => {
   const number = next!.n;
   const key = `scenarios/${s.slug}/${number}.zip`;
   const row = await c.env.DB.prepare(
-    // sha256 は確かめない（大きさが一致すればよい。中身の検査は目次で行う）
-    `INSERT INTO versions (scenario_id, number, state, r2_key, size, sha256, note, created_at)
+    // 中身のハッシュは計算しない。完了したときの R2 の ETag を記録する（complete）
+    `INSERT INTO versions (scenario_id, number, state, r2_key, size, etag, note, created_at)
      VALUES (?, ?, 'uploading', ?, ?, '', ?, ?) RETURNING id`,
   ).bind(s.id, number, key, size, String(body.note ?? '').slice(0, 200) || null, now()).first<{ id: number }>();
   const versionId = row!.id;
@@ -196,11 +196,16 @@ api.post('/versions/:id/complete', async c => {
     } catch (e) {
       return c.json({ error: `アップロードを完了できません（${String((e as Error).message ?? e)}）` }, 400);
     }
+    // 軽い確かめ: 大きさが申告どおりか、ETag の末尾のパートの数（マルチパートの ETag は「…-パートの数」）が合うか
     const head = await c.env.FILES.head(v.r2_key);
     if (!head || head.size !== v.size) {
       return c.json({ error: '大きさが申告と違います' }, 400);
     }
-    await c.env.DB.prepare("UPDATE versions SET state = 'inspecting', upload_id = NULL WHERE id = ?").bind(v.id).run();
+    const partsInEtag = head.etag.match(/-(\d+)$/)?.[1];
+    if (partsInEtag && Number(partsInEtag) !== parts.length) {
+      return c.json({ error: 'パートの数が合いません' }, 400);
+    }
+    await c.env.DB.prepare("UPDATE versions SET state = 'inspecting', upload_id = NULL, etag = ? WHERE id = ?").bind(head.etag, v.id).run();
     await c.env.INSPECT.send({ versionId: v.id });
   }
   return c.json({ state: v.state === 'uploading' ? 'inspecting' : v.state });

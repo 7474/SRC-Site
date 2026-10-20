@@ -220,7 +220,7 @@ CREATE TABLE versions (
   state        TEXT NOT NULL,             -- 'uploading' | 'inspecting' | 'published' | 'rejected' | 'withdrawn'
   r2_key       TEXT,
   size         INTEGER,
-  sha256       TEXT,
+  etag         TEXT,                        -- 完了したときの R2 の ETag（カタログの版の識別。古い版は sha256）
   root         TEXT,                      -- zip の中のフォルダ
   eve          TEXT,                      -- 最初に実行する .eve
   requires     TEXT NOT NULL DEFAULT '[]', -- 共有パックの ID（JSON）
@@ -324,7 +324,7 @@ flowchart TB
 | 暗号化 | 暗号化された項目を含むものを弾く（SRC#Web が展開できない） |
 | ファイル名 | Shift_JIS と UTF-8 の名前を読む（SRC#Web の展開と同じ） |
 
-- 中身の解凍はしない（Workers の CPU とメモリを使わないため）。中身の sha256 も確かめない（届いた大きさが申告と一致すればよい）
+- 中身の解凍はしない（Workers の CPU とメモリを使わないため）。中身のハッシュも計算しない。完了のときに `head` 1 回で、大きさが申告と一致するか、マルチパートの ETag の末尾のパートの数が合うかを確かめ、ETag を版に記録する（カタログの `version` に使う）
 - 同じ規則（`src/lib/zip.ts`）を、アップロードの前にブラウザでもかける（`src/client/precheck.ts` を `scripts/assemble.sh` が `dist/static/precheck.js` に束ねる）。弾かれる zip は上げる前に分かる。Worker の検査は、ブラウザを通さない投稿に備えて残す
 - 続けて、データとイベントを `srcsharp lint` と同じ検査にかける（7474/SRC の SRCLintWeb。スレッドを使わない WebAssembly で、`/lint/` に置く）。汎用データ（`Data/System` の `sp.txt` など）は、そのシナリオが重ねるパックの zip から Range で読む。問題があれば一覧を出し、「問題があっても上げる」を選ぶまで上げない。lint を読み込めないときは飛ばす
 - 検査に通れば、運営の確認なしにすぐ公開する（決定のとおり）
