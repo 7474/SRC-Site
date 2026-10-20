@@ -8,7 +8,7 @@ export type PackRow = {
 
 export type PlayableRow = {
   slug: string; title: string; author: string | null; license: string | null; description: string | null;
-  number: number; sha256: string; root: string | null; eve: string | null; requires: string; excludes: string;
+  version_id: number; number: number; root: string | null; eve: string | null; requires: string; excludes: string;
 };
 
 export type CatalogEntry = {
@@ -38,7 +38,8 @@ export function scenarioEntry(row: PlayableRow, packs: PackRow[]): CatalogEntry 
     id: row.slug,
     title: row.title,
     archive: `/files/scenarios/${row.slug}/${row.number}.zip`,
-    version: `${row.number}-${row.sha256.slice(0, 12)}`,
+    // SRC#Web は version が変わったときだけ zip を取り直す。版の ID はシナリオを作り直しても重ならない
+    version: `${row.number}-${row.version_id}`,
     requires: resolveRequires(packs, parseJsonArray(row.requires), parseJsonArray(row.excludes)),
   };
   if (row.author) entry.author = row.author;
@@ -67,6 +68,6 @@ export function catalog(name: string, scenarios: PlayableRow[], packs: PackRow[]
 
 export const PLAYABLE_SELECT = `
   SELECT s.slug, s.title, s.author, s.license, s.description,
-         v.number, v.sha256, v.root, v.eve, v.requires, v.excludes
+         v.id AS version_id, v.number, v.root, v.eve, v.requires, v.excludes
     FROM scenarios s JOIN versions v ON v.id = s.latest_version
    WHERE s.hidden = 0 AND v.state = 'published'`;
