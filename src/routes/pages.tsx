@@ -177,7 +177,7 @@ async function editPage(c: Context<AppEnv>, slug: string, extra: { error?: strin
   }
   const versions = (await c.env.DB.prepare('SELECT id, number, state, size, created_at, published_at, note, inspect_note, root, eve, requires, excludes FROM versions WHERE scenario_id = ? ORDER BY number DESC')
     .bind(s.id).all<any>()).results;
-  const packs = (await c.env.DB.prepare('SELECT id, title, is_default FROM packs WHERE withdrawn = 0 ORDER BY priority, id').all<any>()).results;
+  const packs = (await c.env.DB.prepare('SELECT id, title, is_default, priority, withdrawn, version FROM packs WHERE withdrawn = 0 ORDER BY priority, id').all<any>()).results;
   const form = extra.form ?? {
     slug: s.slug, title: s.title, author: s.author ?? '', description: s.description ?? '', license: s.license ?? '',
     tags: parseJsonArray(s.tags).join(' '), visibility: s.visibility,

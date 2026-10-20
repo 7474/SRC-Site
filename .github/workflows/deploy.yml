@@ -79,8 +79,10 @@ jobs:
         id: published
         uses: actions/cache@v6
         with:
-          path: out/web
-          key: srcweb-aot-${{ steps.src.outputs.sha }}
+          path: |
+            out/web
+            out/lint
+          key: srcweb-aot-lint-${{ steps.src.outputs.sha }}
 
       - uses: actions/setup-dotnet@v6
         if: steps.published.outputs.cache-hit != 'true'
@@ -101,8 +103,14 @@ jobs:
       - name: Publish SRC#Web
         if: steps.published.outputs.cache-hit != 'true'
         run: |
-          dotnet workload install wasm-tools
+          # マニフェストは SDK に同梱のものを使う（更新すると、NuGet にまだ無いマニフェストを参照するワークロードのセットで失敗することがある）
+          # https://learn.microsoft.com/dotnet/core/tools/dotnet-workload-install
+          dotnet workload install wasm-tools --skip-manifest-update
           dotnet publish srcsharp/SRC.Sharp/SRCSharpWeb/SRCSharpWeb.csproj -c Release -p:RunAOTCompilation=true -o out/web
+          # ブラウザで動く lint（7474/SRC の SRCLintWeb。古い版には無い）
+          if [ -f srcsharp/SRC.Sharp/SRCLintWeb/SRCLintWeb.csproj ]; then
+            dotnet publish srcsharp/SRC.Sharp/SRCLintWeb/SRCLintWeb.csproj -c Release -o out/lint
+          fi
 
       - uses: actions/setup-node@v7
         with:
@@ -116,6 +124,7 @@ jobs:
         env:
           MACKEREL_CLIENT_TOKEN: ${{ secrets.MACKEREL_CLIENT_TOKEN }}
         run: |
+          if [ -d out/lint/wwwroot ]; then export SRCLINT_DIR=out/lint/wwwroot; fi
           SRCWEB_DIR=out/web/wwwroot SRC_VERSION="${SRC_REF} $(git -C srcsharp rev-parse --short HEAD)" bash scripts/assemble.sh
 
       - name: Deploy to Cloudflare

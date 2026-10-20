@@ -104,3 +104,7 @@ dl dd { margin-left: 0; }
   .site-header nav { justify-content: flex-end; }
   .version-list form.compact input { width: 100%; }
 }
+[hidden] { display: none !important; }
+.lint { margin-top: 8px; max-height: 360px; overflow: auto; }
+.lint td { font-size: 13px; }
+.lint td.file { word-break: break-all; }

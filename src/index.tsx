@@ -54,6 +54,8 @@ app.on(['GET', 'HEAD'], '/play/*', async c => {
   return result;
 });
 app.on(['GET', 'HEAD'], '/static/*', c => c.env.ASSETS.fetch(c.req.raw));
+// ブラウザで動く lint（7474/SRC の SRCLintWeb。スレッドを使わないのでクロスオリジン分離は要らない）。投稿の画面が読み込む
+app.on(['GET', 'HEAD'], '/lint/*', c => c.env.ASSETS.fetch(c.req.raw));
 app.get('/favicon.ico', c => c.env.ASSETS.fetch(new Request(new URL('/static/favicon.ico', c.req.url))));
 
 // ログインしている利用者
