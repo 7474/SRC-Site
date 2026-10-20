@@ -289,7 +289,7 @@ CREATE TABLE counters (
 
 | API | 内容 |
 |---|---|
-| `POST /api/scenarios/:slug/versions` | 版を作り、R2 のマルチパートアップロードを始める。要求: 大きさ・sha256。応答: `versionId`・`partSize`（32 MiB）・`parts`（パートの数） |
+| `POST /api/scenarios/:slug/versions` | 版を作り、R2 のマルチパートアップロードを始める。要求: 大きさ。応答: `versionId`・`partSize`（32 MiB）・`parts`（パートの数） |
 | `GET /api/versions/:id/parts/:n` | パートの上げ先。`url`（R2 のパートの署名付き URL、PUT、15 分。Secret が無ければ下の Worker）・`direct`・`length` |
 | `PUT /api/versions/:id/parts/:n` | Worker を通してパートを上げる（R2 の S3 互換 API の鍵が無いとき）。応答: `etag` |
 | `POST /api/versions/:id/complete` | パートの番号と ETag の一覧を渡し、マルチパートアップロードを完了する。大きさを確かめ、検査を Queues に積む |
@@ -310,7 +310,7 @@ flowchart TB
   A[staging の zip] --> B[末尾 64 KB を Range で読み<br/>中央ディレクトリの終わりを探す]
   B --> C[中央ディレクトリを Range で読む<br/>Zip64 にも対応]
   C --> D{規則}
-  D -->|合格| E[sha256 を確かめる<br/>scenarios/ にコピー、staging を消す]
+  D -->|合格| E[scenarios/ にコピー、staging を消す]
   E --> F[版を published、scenarios の latest を更新]
   D -->|不合格| G[版を rejected、理由を記録<br/>staging を消す]
 ```
@@ -324,7 +324,8 @@ flowchart TB
 | 暗号化 | 暗号化された項目を含むものを弾く（SRC#Web が展開できない） |
 | ファイル名 | Shift_JIS と UTF-8 の名前を読む（SRC#Web の展開と同じ） |
 
-- 中身の解凍はしない（Workers の CPU とメモリを使わないため）。sha256 は R2 のオブジェクトを流して計算する。1 GB で数秒〜十数秒の CPU になるので、consumer の CPU 上限を上げておく（Paid で最大 5 分）
+- 中身の解凍はしない（Workers の CPU とメモリを使わないため）。中身の sha256 も確かめない（届いた大きさが申告と一致すればよい）
+- 同じ規則（`src/lib/zip.ts`）を、アップロードの前にブラウザでもかける（`src/client/precheck.ts` を `scripts/assemble.sh` が `dist/static/precheck.js` に束ねる）。弾かれる zip は上げる前に分かる。Worker の検査は、ブラウザを通さない投稿に備えて残す
 - 検査に通れば、運営の確認なしにすぐ公開する（決定のとおり）
 - 参照するアセットの抽出（`refs`）は .NET が要るので、後の段階で GitHub Actions（`srcsharp`）か Cloudflare Containers で行う
 

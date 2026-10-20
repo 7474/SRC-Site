@@ -4,10 +4,10 @@ import { inspect, r2Reader, readEntries, ZipError } from './zip';
 import { abortMultipartUpload, canPresign } from './presign';
 import { now } from './util';
 
-type VersionRow = { id: number; scenario_id: number; number: number; state: string; r2_key: string; size: number; sha256: string };
+type VersionRow = { id: number; scenario_id: number; number: number; state: string; r2_key: string; size: number };
 
 export async function inspectVersion(env: Bindings, versionId: number): Promise<void> {
-  const v = await env.DB.prepare('SELECT id, scenario_id, number, state, r2_key, size, sha256 FROM versions WHERE id = ?')
+  const v = await env.DB.prepare('SELECT id, scenario_id, number, state, r2_key, size FROM versions WHERE id = ?')
     .bind(versionId).first<VersionRow>();
   if (!v || v.state !== 'inspecting') {
     return;
@@ -37,19 +37,6 @@ export async function inspectVersion(env: Bindings, versionId: number): Promise<
   }
   if (!result.ok) {
     await reject(result.reason);
-    return;
-  }
-  // 中身が申告どおりか（途中で壊れていないか）を sha256 で確かめる
-  const object = await env.FILES.get(v.r2_key);
-  if (!object) {
-    await reject('ファイルが届いていません');
-    return;
-  }
-  const digest = new crypto.DigestStream('SHA-256');
-  await object.body.pipeTo(digest);
-  const actual = [...new Uint8Array(await digest.digest)].map(b => b.toString(16).padStart(2, '0')).join('');
-  if (actual !== v.sha256) {
-    await reject('sha256 が申告と違います（アップロードが壊れた可能性があります）');
     return;
   }
   const t = now();

@@ -9,6 +9,8 @@ cd "$(dirname "$0")/.."
 rm -rf dist
 mkdir -p dist/static dist/play
 cp -r public/. dist/static/
+# アップロードの前の検査（Worker の検査と同じ src/lib/zip.ts をブラウザ向けに束ねる）
+npx esbuild src/client/precheck.ts --bundle --format=esm --target=es2022 --minify --outfile=dist/static/precheck.js --log-level=warning
 
 if [ -n "${SRCWEB_DIR:-}" ]; then
   cp -r "$SRCWEB_DIR"/. dist/play/

@@ -1,6 +1,5 @@
 // ローカルの wrangler dev（DEV_LOGIN=1）に対して、投稿から配信・運営までを一通り確かめる。
 // 使い方: node scripts/smoke.mjs <シナリオのフォルダ> [http://127.0.0.1:8787]
-import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -55,8 +54,7 @@ with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as z:
 }
 
 async function upload(agent, data) {
-  const sha256 = createHash('sha256').update(data).digest('hex');
-  let res = await agent.req(`/api/scenarios/${slug}/versions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ size: data.length, sha256 }) });
+  let res = await agent.req(`/api/scenarios/${slug}/versions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ size: data.length }) });
   assert.equal(res.status, 200, await res.clone().text());
   const created = await res.json();
   assert.equal(created.parts, Math.ceil(data.length / created.partSize));

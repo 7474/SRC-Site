@@ -82,14 +82,10 @@ api.post('/scenarios/:slug/versions', async c => {
   if (!user.terms_accepted_at) {
     return c.json({ error: '利用規約に同意してください（設定の頁）' }, 403);
   }
-  const body = await c.req.json<{ size?: number; sha256?: string; note?: string; turnstile?: string }>().catch(() => ({} as any));
+  const body = await c.req.json<{ size?: number; note?: string; turnstile?: string }>().catch(() => ({} as any));
   const size = Number(body.size);
-  const sha256 = String(body.sha256 ?? '').toLowerCase();
   if (!Number.isInteger(size) || size <= 0 || size > MAX_FILE) {
     return c.json({ error: 'zip は 1 GB までです' }, 400);
-  }
-  if (!/^[0-9a-f]{64}$/.test(sha256)) {
-    return c.json({ error: 'sha256 が不正です' }, 400);
   }
   if (!(await verifyTurnstile(c.env, body.turnstile, c.req.header('CF-Connecting-IP')))) {
     return c.json({ error: '確認に失敗しました。頁を読み込み直してください' }, 400);
@@ -112,9 +108,10 @@ api.post('/scenarios/:slug/versions', async c => {
   const number = next!.n;
   const key = `scenarios/${s.slug}/${number}.zip`;
   const row = await c.env.DB.prepare(
+    // sha256 は確かめない（大きさが一致すればよい。中身の検査は目次で行う）
     `INSERT INTO versions (scenario_id, number, state, r2_key, size, sha256, note, created_at)
-     VALUES (?, ?, 'uploading', ?, ?, ?, ?, ?) RETURNING id`,
-  ).bind(s.id, number, key, size, sha256, String(body.note ?? '').slice(0, 200) || null, now()).first<{ id: number }>();
+     VALUES (?, ?, 'uploading', ?, ?, '', ?, ?) RETURNING id`,
+  ).bind(s.id, number, key, size, String(body.note ?? '').slice(0, 200) || null, now()).first<{ id: number }>();
   const versionId = row!.id;
   // https://developers.cloudflare.com/r2/api/workers/workers-multipart-usage/
   const uploadId = canPresign(c.env)
