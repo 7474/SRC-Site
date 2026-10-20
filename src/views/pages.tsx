@@ -252,7 +252,7 @@ export function EditPage(props: {
       </section>
       <section>
         <h2>新しい版を上げる</h2>
-        <p>シナリオのフォルダを zip にしたものを選んでください（1 GB まで）。上げる前に、ブラウザの中で zip の中身（.eve があるか、実行ファイルが無いか など）と、データ・イベントの書き方（srcsharp lint と同じ検査）を確かめます。上げると、すぐに公開されます。</p>
+        <p>シナリオのフォルダを zip にしたものを選んでください（1 GB まで）。上げる前に、ブラウザの中で zip の中身（.eve があるか、実行ファイルが無いか など）と、データ・イベントの書き方（srcsharp lint と同じ検査）、Call の飛び先のラベルや include するファイルがあるかを確かめます。上げると、すぐに公開されます。</p>
         <form id="upload" class="form" data-slug={props.slug} data-direct={props.directUpload ? '1' : '0'} data-system-archives={JSON.stringify(systemArchives)}>
           <input type="file" name="file" accept=".zip,application/zip" required />
           <label>この版の説明（任意）<input name="note" maxlength={200} /></label>
