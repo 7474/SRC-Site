@@ -79,8 +79,10 @@ jobs:
         id: published
         uses: actions/cache@v6
         with:
-          path: out/web
-          key: srcweb-aot-${{ steps.src.outputs.sha }}
+          path: |
+            out/web
+            out/lint
+          key: srcweb-aot-lint-${{ steps.src.outputs.sha }}
 
       - uses: actions/setup-dotnet@v6
         if: steps.published.outputs.cache-hit != 'true'
@@ -101,26 +103,35 @@ jobs:
       - name: Publish SRC#Web
         if: steps.published.outputs.cache-hit != 'true'
         run: |
-          dotnet workload install wasm-tools
+          # マニフェストは SDK に同梱のものを使う（更新すると、NuGet にまだ無いマニフェストを参照するワークロードのセットで失敗することがある）
+          # https://learn.microsoft.com/dotnet/core/tools/dotnet-workload-install
+          dotnet workload install wasm-tools --skip-manifest-update
           dotnet publish srcsharp/SRC.Sharp/SRCSharpWeb/SRCSharpWeb.csproj -c Release -p:RunAOTCompilation=true -o out/web
-
-      - name: Assemble
-        env:
-          MACKEREL_CLIENT_TOKEN: ${{ secrets.MACKEREL_CLIENT_TOKEN }}
-        run: |
-          SRCWEB_DIR=out/web/wwwroot SRC_VERSION="${SRC_REF} $(git -C srcsharp rev-parse --short HEAD)" bash scripts/assemble.sh
+          # ブラウザで動く lint（7474/SRC の SRCLintWeb。古い版には無い）
+          if [ -f srcsharp/SRC.Sharp/SRCLintWeb/SRCLintWeb.csproj ]; then
+            dotnet publish srcsharp/SRC.Sharp/SRCLintWeb/SRCLintWeb.csproj -c Release -o out/lint
+          fi
 
       - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: npm
 
+      # assemble.sh が esbuild（devDependencies）でアップロードの前の検査を束ねるので、先に入れる
+      - run: npm ci
+
+      - name: Assemble
+        env:
+          MACKEREL_CLIENT_TOKEN: ${{ secrets.MACKEREL_CLIENT_TOKEN }}
+        run: |
+          if [ -d out/lint/wwwroot ]; then export SRCLINT_DIR=out/lint/wwwroot; fi
+          SRCWEB_DIR=out/web/wwwroot SRC_VERSION="${SRC_REF} $(git -C srcsharp rev-parse --short HEAD)" bash scripts/assemble.sh
+
       - name: Deploy to Cloudflare
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          npm ci
           # 静的アセットは 1 ファイル 25 MiB まで。超えるもの（AOT の dotnet.native.wasm など）は R2 の web/ に置き、Worker が返す
           # ファイル名に内容のハッシュが入るので、バージョン URL の版と本番の版が同じバケットに並んでも衝突しない
           # https://developers.cloudflare.com/workers/platform/limits/#static-assets

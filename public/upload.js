@@ -1,82 +1,10 @@
 // 新しい版のアップロード（/my/scenarios/:slug）。
-// 1. 大きさと sha256 を送って版を作る → 2. 返った URL へ PUT（R2 へ直接） → 3. 完了を知らせる → 4. 検査が済むまで状態を見る
+// 1. zip の目次をブラウザで検査する（precheck.js。Worker の検査と同じ規則）
+// → 1'. データとイベントを lint する（/lint/srclint.js。srcsharp lint と同じ検査と、ラベル・include・素材の参照の静的解析）
+//      どこまで確かめるかは投稿者が選ぶ（lintLevel: stop＝エラー・警告があれば止める / warn＝表示して上げる / off＝確かめない）。素材が無いこと（info）では止めない
+// → 2. 大きさを送って版を作る
+// → 3. パートに分けて上げる（R2 へ直接か Worker を通す） → 4. 完了を知らせる → 5. 検査が済むまで状態を見る
 (() => {
-  // SHA-256（FIPS 180-4）
-  const K = new Uint32Array([
-    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3,
-    0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
-    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13,
-    0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
-    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
-    0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
-  ]);
-  class Sha256 {
-    constructor() {
-      this.h = new Uint32Array([0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19]);
-      this.w = new Uint32Array(64);
-      this.buf = new Uint8Array(64);
-      this.len = 0;
-      this.total = 0;
-    }
-    update(data) {
-      let i = 0;
-      this.total += data.length;
-      if (this.len > 0) {
-        const n = Math.min(64 - this.len, data.length);
-        this.buf.set(data.subarray(0, n), this.len);
-        this.len += n;
-        i = n;
-        if (this.len === 64) {
-          this.block(this.buf, 0);
-          this.len = 0;
-        }
-      }
-      for (; i + 64 <= data.length; i += 64) {
-        this.block(data, i);
-      }
-      if (i < data.length) {
-        this.buf.set(data.subarray(i), 0);
-        this.len = data.length - i;
-      }
-    }
-    block(d, o) {
-      const w = this.w;
-      for (let t = 0; t < 16; t++) {
-        w[t] = (d[o + t * 4] << 24) | (d[o + t * 4 + 1] << 16) | (d[o + t * 4 + 2] << 8) | d[o + t * 4 + 3];
-      }
-      for (let t = 16; t < 64; t++) {
-        const x = w[t - 15], y = w[t - 2];
-        const s0 = ((x >>> 7) | (x << 25)) ^ ((x >>> 18) | (x << 14)) ^ (x >>> 3);
-        const s1 = ((y >>> 17) | (y << 15)) ^ ((y >>> 19) | (y << 13)) ^ (y >>> 10);
-        w[t] = (w[t - 16] + s0 + w[t - 7] + s1) | 0;
-      }
-      let [a, b, c, dd, e, f, g, h] = this.h;
-      for (let t = 0; t < 64; t++) {
-        const S1 = ((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7));
-        const t1 = (h + S1 + ((e & f) ^ (~e & g)) + K[t] + w[t]) | 0;
-        const S0 = ((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10));
-        const t2 = (S0 + ((a & b) ^ (a & c) ^ (b & c))) | 0;
-        h = g; g = f; f = e; e = (dd + t1) | 0; dd = c; c = b; b = a; a = (t1 + t2) | 0;
-      }
-      const H = this.h;
-      H[0] += a; H[1] += b; H[2] += c; H[3] += dd; H[4] += e; H[5] += f; H[6] += g; H[7] += h;
-    }
-    hex() {
-      const bits = this.total * 8;
-      const pad = new Uint8Array(((this.len < 56 ? 56 : 120) - this.len) + 8);
-      pad[0] = 0x80;
-      const hi = Math.floor(bits / 0x100000000), lo = bits >>> 0;
-      const p = pad.length - 8;
-      pad[p] = hi >>> 24; pad[p + 1] = hi >>> 16; pad[p + 2] = hi >>> 8; pad[p + 3] = hi;
-      pad[p + 4] = lo >>> 24; pad[p + 5] = lo >>> 16; pad[p + 6] = lo >>> 8; pad[p + 7] = lo;
-      const total = this.total;
-      this.update(pad);
-      this.total = total;
-      return [...this.h].map(x => (x >>> 0).toString(16).padStart(8, '0')).join('');
-    }
-  }
-  // テストから使う
-  window.srcSiteSha256 = data => { const h = new Sha256(); h.update(data); return h.hex(); };
 
   const form = document.getElementById('upload');
   if (!form) {
@@ -85,10 +13,39 @@
   const status = form.querySelector('.status');
   const progress = form.querySelector('progress');
   const button = form.querySelector('button[type=submit]');
+  const lintBox = form.querySelector('.lint');
+  const lintConfirm = form.querySelector('.lint-confirm');
   const show = (text, error) => {
     status.textContent = text;
     status.classList.toggle('error', Boolean(error));
   };
+  const clearLint = () => {
+    lintBox.hidden = true;
+    lintConfirm.hidden = true;
+    form.lintConfirm.checked = false;
+  };
+  // 選んだ zip か確かめ方が変わったら lint の結果と確認を消す
+  form.file.addEventListener('change', clearLint);
+  // 確かめ方は次の投稿でも使う（保存できなくても既定のまま使える）
+  try {
+    const saved = JSON.parse(localStorage.getItem('upload.lint') || '{}');
+    if ([...form.lintLevel.options].some(o => o.value === saved.level)) {
+      form.lintLevel.value = saved.level;
+    }
+    if (typeof saved.assets === 'boolean') {
+      form.lintAssets.checked = saved.assets;
+    }
+  } catch {}
+  for (const input of [form.lintLevel, form.lintAssets]) {
+    input.addEventListener('change', () => {
+      clearLint();
+      try {
+        localStorage.setItem('upload.lint', JSON.stringify({ level: form.lintLevel.value, assets: form.lintAssets.checked }));
+      } catch {}
+    });
+  }
+  // lint の実行環境（WebAssembly）を先に読み込んでおく。読み込めなくても投稿はできる
+  const lintModule = import('/lint/srclint.js').then(m => (m.preload(), m)).catch(() => null);
 
   form.addEventListener('submit', async e => {
     e.preventDefault();
@@ -103,13 +60,34 @@
     button.disabled = true;
     progress.hidden = false;
     try {
-      show('確かめるための値（sha256）を計算しています…');
-      const sha256 = await sha256File(file, ratio => (progress.value = ratio * 100));
+      show('zip の中身を確かめています…');
+      const { precheck } = await import('/static/precheck.js');
+      const checked = await precheck(file);
+      if (!checked.ok) {
+        show(`この zip は上げられません: ${checked.reason}`, true);
+        return;
+      }
+      const level = form.lintLevel.value;
+      let found = [];
+      if (level !== 'off' && !form.lintConfirm.checked) {
+        show('データとイベントを確かめています（srcsharp lint）…');
+        found = await lint(file, form.lintAssets.checked);
+        const blocking = found.filter(d => d.severity !== 'info');
+        if (found.length) {
+          showLint(found, level === 'stop' && blocking.length > 0);
+        } else {
+          clearLint();
+        }
+        if (level === 'stop' && blocking.length) {
+          show(`問題が ${blocking.length} 件あります。直してから上げ直すか、「問題があっても上げる」を選んで上げてください。`, true);
+          return;
+        }
+      }
       const turnstile = form.querySelector('[name="cf-turnstile-response"]')?.value;
       const created = await json(await fetch(`/api/scenarios/${encodeURIComponent(form.dataset.slug)}/versions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ size: file.size, sha256, note: form.note.value, turnstile }),
+        body: JSON.stringify({ size: file.size, note: form.note.value, turnstile }),
       }));
       const parts = [];
       for (let n = 1; n <= created.parts; n++) {
@@ -130,8 +108,17 @@
         await new Promise(r => setTimeout(r, 2000));
         const v = await json(await fetch(`/api/versions/${created.versionId}`));
         if (v.state === 'published') {
-          show(`第 ${v.number} 版を公開しました。`);
-          location.href = `/my/scenarios/${encodeURIComponent(v.slug)}?saved=1`;
+          const href = `/my/scenarios/${encodeURIComponent(v.slug)}?saved=1`;
+          if (!found.length) {
+            show(`第 ${v.number} 版を公開しました。`);
+            location.href = href;
+            return;
+          }
+          // 確かめた結果を読めるように、頁は移らない
+          show(`第 ${v.number} 版を公開しました。確かめた結果は下のとおりです。`);
+          const link = status.appendChild(document.createElement('a'));
+          link.href = href;
+          link.textContent = ' 版の一覧へ';
           return;
         }
         if (v.state === 'rejected') {
@@ -146,6 +133,49 @@
       button.disabled = false;
     }
   });
+
+  // srcsharp lint と同じ検査（SRCLintWeb）。汎用データと素材はこのシナリオが重ねるパックからも探す。lint を使えなければ問題なしとして扱う
+  async function lint(file, assets) {
+    const m = await lintModule;
+    if (!m) {
+      return [];
+    }
+    try {
+      const result = await m.lintZip(file, { systemArchives: JSON.parse(form.dataset.systemArchives || '[]'), assets });
+      return result.diagnostics;
+    } catch (err) {
+      console.warn('lint に失敗しました', err);
+      return [];
+    }
+  }
+
+  const KINDS = { error: 'エラー', warning: '警告', info: '素材' };
+  // 一覧を出す。confirm なら「問題があっても上げる」も出す。エラー・警告を先に並べる
+  function showLint(found, confirm) {
+    const order = { error: 0, warning: 1, info: 2 };
+    const problems = [...found].sort((a, b) => order[a.severity] - order[b.severity]);
+    const table = document.createElement('table');
+    const head = table.createTHead().insertRow();
+    for (const h of ['ファイル', '行', '種類', '内容']) {
+      head.appendChild(document.createElement('th')).textContent = h;
+    }
+    const body = table.createTBody();
+    for (const d of problems.slice(0, 200)) {
+      const row = body.insertRow();
+      const cells = [d.file, d.line, KINDS[d.severity] ?? d.severity, d.message + (d.source && d.severity !== 'info' ? `（${d.source}）` : '')];
+      cells.forEach((v, i) => {
+        const td = row.insertCell();
+        td.textContent = String(v);
+        if (i === 0) td.className = 'file';
+      });
+    }
+    lintBox.replaceChildren(table);
+    if (problems.length > 200) {
+      lintBox.appendChild(document.createElement('p')).textContent = `ほか ${problems.length - 200} 件`;
+    }
+    lintBox.hidden = false;
+    lintConfirm.hidden = !confirm;
+  }
 
   async function json(response) {
     const body = await response.json().catch(() => ({}));
@@ -195,15 +225,5 @@
     });
   }
 
-  // 大きい zip でもメモリに読み切らないよう、少しずつ読んで SHA-256 を計算する（Web Crypto は一括でしか計算できない）
-  async function sha256File(file, onProgress) {
-    const h = new Sha256();
-    const chunk = 4 * 1024 * 1024;
-    for (let offset = 0; offset < file.size; offset += chunk) {
-      h.update(new Uint8Array(await file.slice(offset, offset + chunk).arrayBuffer()));
-      onProgress(Math.min(1, (offset + chunk) / file.size));
-    }
-    return h.hex();
-  }
 
 })();

@@ -220,7 +220,7 @@ CREATE TABLE versions (
   state        TEXT NOT NULL,             -- 'uploading' | 'inspecting' | 'published' | 'rejected' | 'withdrawn'
   r2_key       TEXT,
   size         INTEGER,
-  sha256       TEXT,
+  etag         TEXT,                        -- 完了したときの R2 の ETag（カタログの版の識別。古い版は sha256）
   root         TEXT,                      -- zip の中のフォルダ
   eve          TEXT,                      -- 最初に実行する .eve
   requires     TEXT NOT NULL DEFAULT '[]', -- 共有パックの ID（JSON）
@@ -289,7 +289,7 @@ CREATE TABLE counters (
 
 | API | 内容 |
 |---|---|
-| `POST /api/scenarios/:slug/versions` | 版を作り、R2 のマルチパートアップロードを始める。要求: 大きさ・sha256。応答: `versionId`・`partSize`（32 MiB）・`parts`（パートの数） |
+| `POST /api/scenarios/:slug/versions` | 版を作り、R2 のマルチパートアップロードを始める。要求: 大きさ。応答: `versionId`・`partSize`（32 MiB）・`parts`（パートの数） |
 | `GET /api/versions/:id/parts/:n` | パートの上げ先。`url`（R2 のパートの署名付き URL、PUT、15 分。Secret が無ければ下の Worker）・`direct`・`length` |
 | `PUT /api/versions/:id/parts/:n` | Worker を通してパートを上げる（R2 の S3 互換 API の鍵が無いとき）。応答: `etag` |
 | `POST /api/versions/:id/complete` | パートの番号と ETag の一覧を渡し、マルチパートアップロードを完了する。大きさを確かめ、検査を Queues に積む |
@@ -310,7 +310,7 @@ flowchart TB
   A[staging の zip] --> B[末尾 64 KB を Range で読み<br/>中央ディレクトリの終わりを探す]
   B --> C[中央ディレクトリを Range で読む<br/>Zip64 にも対応]
   C --> D{規則}
-  D -->|合格| E[sha256 を確かめる<br/>scenarios/ にコピー、staging を消す]
+  D -->|合格| E[scenarios/ にコピー、staging を消す]
   E --> F[版を published、scenarios の latest を更新]
   D -->|不合格| G[版を rejected、理由を記録<br/>staging を消す]
 ```
@@ -324,7 +324,18 @@ flowchart TB
 | 暗号化 | 暗号化された項目を含むものを弾く（SRC#Web が展開できない） |
 | ファイル名 | Shift_JIS と UTF-8 の名前を読む（SRC#Web の展開と同じ） |
 
-- 中身の解凍はしない（Workers の CPU とメモリを使わないため）。sha256 は R2 のオブジェクトを流して計算する。1 GB で数秒〜十数秒の CPU になるので、consumer の CPU 上限を上げておく（Paid で最大 5 分）
+- 中身の解凍はしない（Workers の CPU とメモリを使わないため）。中身のハッシュも計算しない。完了のときに `head` 1 回で、大きさが申告と一致するか、マルチパートの ETag の末尾のパートの数が合うかを確かめ、ETag を版に記録する（カタログの `version` に使う）
+- 同じ規則（`src/lib/zip.ts`）を、アップロードの前にブラウザでもかける（`src/client/precheck.ts` を `scripts/assemble.sh` が `dist/static/precheck.js` に束ねる）。弾かれる zip は上げる前に分かる。Worker の検査は、ブラウザを通さない投稿に備えて残す
+- 続けて、データとイベントを `srcsharp lint` と同じ検査と静的解析（`Call`・`Goto` の飛び先のラベル、include するファイル）にかける（7474/SRC の SRCLintWeb。スレッドを使わない WebAssembly で、`/lint/` に置く）。汎用データ（`Data/System` の `sp.txt` と `Lib` のイベント）は、そのシナリオが重ねるパックの zip から Range で読む。画像・音・マップの素材のファイルがあるかも、シナリオの zip と重ねるパックの zip の目次で確かめる（`assets: true`）。
+- どこまで確かめるかは投稿者が選ぶ（投稿の画面の「上げる前の確かめ」。選んだものはブラウザの `localStorage` に残す）
+
+  | 選択 | 動き |
+  |---|---|
+  | 問題があれば止める（既定） | エラー・警告があれば一覧を出し、「問題があっても上げる」を選ぶまで上げない |
+  | 問題を表示して、そのまま上げる | 一覧を出して上げる。公開したあとも頁を移らず、一覧を残す |
+  | 確かめない | lint をかけない |
+
+  素材が見つからないこと（`info`）は一覧に出すだけで、どの選択でも止めない（素材を同梱せずに公開するシナリオは多い）。「素材のファイルがあるかも見る」を外せば確かめない。lint を読み込めないときは飛ばす
 - 検査に通れば、運営の確認なしにすぐ公開する（決定のとおり）
 - 参照するアセットの抽出（`refs`）は .NET が要るので、後の段階で GitHub Actions（`srcsharp`）か Cloudflare Containers で行う
 

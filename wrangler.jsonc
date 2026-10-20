@@ -34,7 +34,7 @@
   ],
   // 投稿されないまま残った版の片付けと、検査の取りこぼしの拾い直し
   "triggers": { "crons": ["*/10 * * * *"] },
-  // zip の検査（sha256 を計算するため、大きい zip では CPU を使う）には Workers Paid が要る。
+  // zip の検査（目次を読む。ファイルの多い zip では CPU を使う）で Free の CPU の上限を超えるなら Workers Paid にする。
   // Paid にしたら次を戻す（Free では CPU の上限を設定できず、配信が失敗する）
   // "limits": { "cpu_ms": 300000 },
   "observability": { "enabled": true },

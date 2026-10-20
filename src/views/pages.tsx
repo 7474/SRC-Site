@@ -1,6 +1,7 @@
 import type { Child } from 'hono/jsx';
 import { Notice } from './layout';
 import { formatDate, formatSize } from '../lib/util';
+import { resolveRequires, type PackRow } from '../lib/catalog';
 
 export type ListItem = {
   slug: string; title: string; author: string | null; handle: string; updated_at: number;
@@ -232,11 +233,15 @@ export function NewScenarioPage(props: { v: ScenarioForm; error?: string }) {
 
 export function EditPage(props: {
   slug: string; v: ScenarioForm; versions: (VersionItem & { root: string | null; eve: string | null; requires: string; excludes: string })[];
-  packs: { id: string; title: string; is_default: number }[]; error?: string; saved?: boolean; turnstileKey?: string; directUpload: boolean;
+  packs: { id: string; title: string; is_default: number; priority: number; withdrawn: number; version: string }[]; error?: string; saved?: boolean; turnstileKey?: string; directUpload: boolean;
 }) {
   const latestPublished = props.versions.find(v => v.state === 'published');
   const requires = latestPublished ? JSON.parse(latestPublished.requires) as string[] : [];
   const excludes = latestPublished ? JSON.parse(latestPublished.excludes) as string[] : [];
+  // lint が汎用データ（Data/System の sp.txt など）を読むパック。遊ぶときに重ねるものと同じ
+  const systemArchives = resolveRequires(props.packs as PackRow[], requires, excludes)
+    .map(id => props.packs.find(p => p.id === id)!)
+    .map(p => `/files/packs/${p.id}/${p.version}.zip`);
   return (
     <>
       <section>
@@ -247,14 +252,25 @@ export function EditPage(props: {
       </section>
       <section>
         <h2>新しい版を上げる</h2>
-        <p>シナリオのフォルダを zip にしたものを選んでください（1 GB まで）。上げると検査（.eve があるか、実行ファイルが無いか など）の後、すぐに公開されます。</p>
-        <form id="upload" class="form" data-slug={props.slug} data-direct={props.directUpload ? '1' : '0'}>
+        <p>シナリオのフォルダを zip にしたものを選んでください（1 GB まで）。上げる前に、ブラウザの中で zip の中身（.eve があるか、実行ファイルが無いか など）を確かめます。上げると、すぐに公開されます。</p>
+        <p>あわせて、データ・イベントの書き方（srcsharp lint と同じ検査）、Call の飛び先のラベルや include するファイルがあるか、画像・音などの素材のファイルがあるかを確かめられます。どこまで確かめるかは下で選べます。素材が無いことは知らせるだけで、上げるのは止めません。</p>
+        <form id="upload" class="form" data-slug={props.slug} data-direct={props.directUpload ? '1' : '0'} data-system-archives={JSON.stringify(systemArchives)}>
           <input type="file" name="file" accept=".zip,application/zip" required />
           <label>この版の説明（任意）<input name="note" maxlength={200} /></label>
+          <label>上げる前の確かめ
+            <select name="lintLevel">
+              <option value="stop">問題があれば止める（確かめてから上げる）</option>
+              <option value="warn">問題を表示して、そのまま上げる</option>
+              <option value="off">確かめない</option>
+            </select>
+          </label>
+          <label class="check"><input type="checkbox" name="lintAssets" checked /> 素材（画像・音・マップ）のファイルがあるかも見る（知らせるだけ）</label>
           <Turnstile siteKey={props.turnstileKey} />
           <button type="submit">上げる</button>
           <progress hidden max={100} value={0}></progress>
           <p class="status" aria-live="polite"></p>
+          <div class="lint" hidden></div>
+          <label class="check lint-confirm" hidden><input type="checkbox" name="lintConfirm" /> 問題があっても上げる</label>
         </form>
         <script src="/static/upload.js" defer></script>
       </section>
