@@ -79,7 +79,8 @@ app.use('*', async (c, next) => {
 app.use('*', async (c, next) => {
   const user = c.get('user');
   const key = user ? `user:${user.id}` : `ip:${c.req.header('CF-Connecting-IP') ?? 'local'}`;
-  const writing = c.req.method !== 'GET' && c.req.method !== 'HEAD';
+  // パートのアップロード（1 GB で 32 回）は書き込みの回数に数えない（本人の版に限り、大きさの上限で縛られている）
+  const writing = c.req.method !== 'GET' && c.req.method !== 'HEAD' && !/^\/api\/versions\/\d+\/parts\/\d+$/.test(c.req.path);
   const limiter = writing ? c.env.WRITE_LIMITER : c.env.API_LIMITER;
   if (limiter && (c.req.path.startsWith('/api/') || writing)) {
     const { success } = await limiter.limit({ key: `${writing ? 'w' : 'r'}:${key}` });

@@ -21,7 +21,7 @@
 1. Cloudflare の API トークンを作る。権限: Workers Scripts・Workers R2 Storage・D1・Queues の Edit、`koudenpa.net` の Workers Routes・DNS の Edit。[API トークン](https://developers.cloudflare.com/fundamentals/api/get-started/create-token/)
 2. `bash scripts/bootstrap.sh` を実行し、書き換わった `wrangler.jsonc`（D1 の `database_id`）をコミットする
 3. Google Cloud で OAuth クライアント（ウェブ アプリケーション）を作る。承認済みのリダイレクト URI に `https://src.koudenpa.net/auth/callback` と `https://staging-src-site.koudenpa.workers.dev/auth/callback` を加える。スコープは `openid` だけ。[OpenID Connect](https://developers.google.com/identity/openid-connect/openid-connect)
-4. R2 の API トークン（対象のバケットの Object Read & Write）を作る。署名付き URL のアップロードに使う。[R2 の API トークン](https://developers.cloudflare.com/r2/api/tokens/)
+4. R2 の API トークン（対象のバケットの **Object Read & Write**。読み取りだけではアップロードが 403 になる）を作る。署名付き URL のアップロードに使う。[R2 の API トークン](https://developers.cloudflare.com/r2/api/tokens/)
 5. Worker の Secret を入れる（`npx wrangler secret put <名前> --env production`）
 6. GitHub の Secrets・環境を設定する（下）
 7. Actions の Packs と Deploy を実行する
@@ -37,7 +37,7 @@
 |---|---|---|
 | `GOOGLE_CLIENT_ID`・`GOOGLE_CLIENT_SECRET` | Google の OAuth クライアント | ログインできない |
 | `SESSION_SECRET` | セッションと OIDC の状態の署名（`openssl rand -base64 32`） | ログインできない |
-| `R2_ACCOUNT_ID`・`R2_ACCESS_KEY_ID`・`R2_SECRET_ACCESS_KEY` | 署名付き URL（ブラウザから R2 へ直接 PUT） | Worker を通して PUT する（100 MB まで） |
+| `R2_ACCOUNT_ID`・`R2_ACCESS_KEY_ID`・`R2_SECRET_ACCESS_KEY` | パートの署名付き URL（ブラウザから R2 へ直接 PUT）。トークンは対象のバケットの Object Read & Write | Worker を通してパートを PUT する |
 | `TURNSTILE_SITE_KEY`・`TURNSTILE_SECRET` | 版の作成のボット対策 | 確かめない |
 
 ### GitHub Actions

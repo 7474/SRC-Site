@@ -1,6 +1,7 @@
 // 投稿された版の検査（Queues の consumer と、取りこぼしを拾う cron から呼ぶ）
 import type { Bindings } from '../env';
 import { inspect, r2Reader, readEntries, ZipError } from './zip';
+import { abortMultipartUpload, canPresign } from './presign';
 import { now } from './util';
 
 type VersionRow = { id: number; scenario_id: number; number: number; state: string; r2_key: string; size: number; sha256: string };
@@ -75,9 +76,15 @@ export async function sweep(env: Bindings): Promise<void> {
   for (const row of stuck.results) {
     await env.INSPECT.send({ versionId: row.id });
   }
-  const abandoned = await env.DB.prepare("SELECT id, r2_key FROM versions WHERE state = 'uploading' AND created_at < ? LIMIT 100")
-    .bind(t - 24 * 3600 * 1000).all<{ id: number; r2_key: string }>();
+  const abandoned = await env.DB.prepare("SELECT id, r2_key, upload_id FROM versions WHERE state = 'uploading' AND created_at < ? LIMIT 100")
+    .bind(t - 24 * 3600 * 1000).all<{ id: number; r2_key: string; upload_id: string | null }>();
   for (const row of abandoned.results) {
+    // 上がったパートを消す（消し損ねても R2 は完了しないマルチパートアップロードを 7 日で消す）
+    if (row.upload_id) {
+      await (canPresign(env)
+        ? abortMultipartUpload(env, row.r2_key, row.upload_id)
+        : env.FILES.resumeMultipartUpload(row.r2_key, row.upload_id).abort()).catch(() => {});
+    }
     await env.FILES.delete(row.r2_key);
     await env.DB.prepare("UPDATE versions SET state = 'rejected', inspect_note = 'アップロードが完了しませんでした' WHERE id = ?").bind(row.id).run();
   }

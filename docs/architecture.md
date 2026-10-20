@@ -289,15 +289,19 @@ CREATE TABLE counters (
 
 | API | 内容 |
 |---|---|
-| `POST /api/scenarios/:slug/versions` | 版を作り、アップロード先を返す。要求: 大きさ・sha256。応答: `uploadUrl`（署名付き URL、PUT、15 分。Secret が無ければ下の `upload`）・`versionId` |
-| `PUT /api/versions/:id/upload` | Worker を通すアップロード（署名付き URL を作れないとき。100 MB まで） |
-| `POST /api/versions/:id/complete` | アップロードが済んだことを知らせる。検査を Queues に積む |
+| `POST /api/scenarios/:slug/versions` | 版を作り、R2 のマルチパートアップロードを始める。要求: 大きさ・sha256。応答: `versionId`・`partSize`（32 MiB）・`parts`（パートの数） |
+| `GET /api/versions/:id/parts/:n` | パートの上げ先。`url`（R2 のパートの署名付き URL、PUT、15 分。Secret が無ければ下の Worker）・`direct`・`length` |
+| `PUT /api/versions/:id/parts/:n` | Worker を通してパートを上げる（R2 の S3 互換 API の鍵が無いとき）。応答: `etag` |
+| `POST /api/versions/:id/complete` | パートの番号と ETag の一覧を渡し、マルチパートアップロードを完了する。大きさを確かめ、検査を Queues に積む |
 | `GET /api/versions/:id` | 版の状態（検査中・公開・弾いた理由）。投稿の画面が数秒おきに見る |
 
 シナリオの作成・変更・削除と版の設定は HTML のフォーム（`/my/`）で行う。
 
-- 署名付き URL は Worker が [aws4fetch](https://github.com/mhart/aws4fetch) で作る（R2 の S3 互換 API のアクセスキーは Worker の Secret に置き、そのバケットの書き込みだけを許す）。`Content-Type: application/zip` を署名に含め、他の種類は受け付けない（[署名付き URL](https://developers.cloudflare.com/r2/api/s3/presigned-urls/)）
-- アップロードは Worker を通らないので、Workers の要求の大きさの制限（Free・Pro で 100 MB）を受けない
+- zip は 32 MiB ずつのパートに分けて上げる（[マルチパートアップロード](https://developers.cloudflare.com/r2/objects/multipart-objects/)）。通信が切れたらそのパートだけ上げ直す（5 回まで）
+- マルチパートアップロードの開始・完了と、パートの署名付き URL は Worker が [aws4fetch](https://github.com/mhart/aws4fetch) で R2 の S3 互換 API を呼んで作る（[署名付き URL](https://developers.cloudflare.com/r2/api/s3/presigned-urls/)）。アクセスキーは Worker の Secret に置く。キーには対象のバケットの **Object Read & Write** が要る（読み取りだけでは PUT が 403 になり、ブラウザには CORS のエラーとして見える）
+- パートは Worker を通らないので、Workers の要求の大きさの制限（Free・Pro で 100 MB）や CPU 時間を使わない。ブラウザはパートの応答の `ETag` ヘッダを読む（バケットの CORS で見せている）
+- パートのアップロードは書き込みの回数の制限に数えない（1 GB で 32 回）
+- 1 日以上アップロード中のままの版は、cron がマルチパートアップロードを取りやめて片付ける
 
 ### 検査（Queues の consumer）
 

@@ -2,14 +2,28 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '../env';
 import { catalog, PLAYABLE_SELECT, type PackRow, type PlayableRow } from '../lib/catalog';
-import { canPresign, presignPut, UPLOAD_CONTENT_TYPE } from '../lib/presign';
 import { verifyTurnstile } from '../lib/turnstile';
+import { canPresign, completeMultipartUpload, createMultipartUpload, presignUploadPart, UPLOAD_CONTENT_TYPE } from '../lib/presign';
 import { now, today } from '../lib/util';
 import { canEdit, getScenario, requireUser } from './common';
 
 export const api = new Hono<AppEnv>();
 
 const MAX_FILE = 1024 * 1024 * 1024;
+// zip はこの大きさずつ R2 のマルチパートアップロードで上げる。通信が切れたらそのパートだけ上げ直す。
+// R2 は最後以外のパートが同じ大きさであることを求める（https://developers.cloudflare.com/r2/objects/multipart-objects/）
+// - R2 の S3 互換 API の鍵があれば、ブラウザからパートの署名付き URL へ直接上げる（Worker を通さない）
+// - 無ければ（ローカル開発など）Worker を通して上げる（Worker の要求の本体は 100 MB まで）
+export const PART_SIZE = 32 * 1024 * 1024;
+
+export function partCount(size: number): number {
+  return Math.ceil(size / PART_SIZE);
+}
+
+export function partLength(size: number, partNumber: number): number {
+  return partNumber < partCount(size) ? PART_SIZE : size - PART_SIZE * (partCount(size) - 1);
+}
+
 const MAX_TOTAL_PER_USER = 5 * 1024 * 1024 * 1024;
 const MAX_VERSIONS_PER_DAY = 10;
 
@@ -102,9 +116,12 @@ api.post('/scenarios/:slug/versions', async c => {
      VALUES (?, ?, 'uploading', ?, ?, ?, ?, ?) RETURNING id`,
   ).bind(s.id, number, key, size, sha256, String(body.note ?? '').slice(0, 200) || null, now()).first<{ id: number }>();
   const versionId = row!.id;
-  // R2 への署名付き URL を作れれば直接上げる。作れなければ（ローカル開発など）Worker を通す（100 MB まで）
-  const uploadUrl = canPresign(c.env) ? await presignPut(c.env, key) : `/api/versions/${versionId}/upload`;
-  return c.json({ versionId, number, uploadUrl, contentType: UPLOAD_CONTENT_TYPE });
+  // https://developers.cloudflare.com/r2/api/workers/workers-multipart-usage/
+  const uploadId = canPresign(c.env)
+    ? await createMultipartUpload(c.env, key)
+    : (await c.env.FILES.createMultipartUpload(key, { httpMetadata: { contentType: UPLOAD_CONTENT_TYPE } })).uploadId;
+  await c.env.DB.prepare('UPDATE versions SET upload_id = ? WHERE id = ?').bind(uploadId, versionId).run();
+  return c.json({ versionId, number, partSize: PART_SIZE, parts: partCount(size) });
 });
 
 async function ownVersion(c: any, id: string) {
@@ -116,21 +133,49 @@ async function ownVersion(c: any, id: string) {
   return s && canEdit(c, s) ? v : null;
 }
 
-// Worker を通すアップロード（署名付き URL を作れないとき）
-api.put('/versions/:id/upload', async c => {
+async function uploadingPart(c: any): Promise<{ v: any; part: number } | Response> {
   const v = await ownVersion(c, c.req.param('id'));
-  if (!v || v.state !== 'uploading') {
+  if (!v || v.state !== 'uploading' || !v.upload_id) {
     return c.json({ error: '版がありません' }, 404);
   }
-  if (c.req.header('Content-Type') !== UPLOAD_CONTENT_TYPE) {
-    return c.json({ error: 'zip を上げてください' }, 415);
+  const part = Number(c.req.param('part'));
+  if (!Number.isInteger(part) || part < 1 || part > partCount(v.size)) {
+    return c.json({ error: 'パートの番号が不正です' }, 400);
   }
+  return { v, part };
+}
+
+// パートの上げ先。応答: url（PUT する先）、direct（R2 へ直接か。直接なら応答の ETag ヘッダを、Worker を通すなら応答の JSON の etag を完了に渡す）
+// 上げ直すときも取り直す（署名付き URL は 15 分で切れる）
+api.get('/versions/:id/parts/:part', async c => {
+  const found = await uploadingPart(c);
+  if (found instanceof Response) {
+    return found;
+  }
+  const { v, part } = found;
+  if (canPresign(c.env)) {
+    return c.json({ url: await presignUploadPart(c.env, v.r2_key, v.upload_id, part), direct: true, length: partLength(v.size, part) });
+  }
+  return c.json({ url: `/api/versions/${v.id}/parts/${part}`, direct: false, length: partLength(v.size, part) });
+});
+
+// Worker を通してパートを 1 つ上げる（R2 の S3 互換 API の鍵が無いとき）。同じパートを上げ直してもよい
+api.put('/versions/:id/parts/:part', async c => {
+  if (canPresign(c.env)) {
+    return c.json({ error: 'パートは R2 へ直接上げてください' }, 400);
+  }
+  const found = await uploadingPart(c);
+  if (found instanceof Response) {
+    return found;
+  }
+  const { v, part } = found;
   const length = Number(c.req.header('Content-Length'));
-  if (length !== v.size || !c.req.raw.body) {
+  if (length !== partLength(v.size, part) || !c.req.raw.body) {
     return c.json({ error: '大きさが申告と違います' }, 400);
   }
-  await c.env.FILES.put(v.r2_key, c.req.raw.body.pipeThrough(new FixedLengthStream(length)), { httpMetadata: { contentType: UPLOAD_CONTENT_TYPE } });
-  return c.body(null, 200);
+  const upload = c.env.FILES.resumeMultipartUpload(v.r2_key, v.upload_id);
+  const uploaded = await upload.uploadPart(part, c.req.raw.body.pipeThrough(new FixedLengthStream(length)));
+  return c.json({ partNumber: uploaded.partNumber, etag: uploaded.etag });
 });
 
 // アップロードが済んだ。検査に回す
@@ -140,7 +185,25 @@ api.post('/versions/:id/complete', async c => {
     return c.json({ error: '版がありません' }, 404);
   }
   if (v.state === 'uploading') {
-    await c.env.DB.prepare("UPDATE versions SET state = 'inspecting' WHERE id = ?").bind(v.id).run();
+    const body = await c.req.json<{ parts?: { partNumber: number; etag: string }[] }>().catch(() => ({} as any));
+    const parts = Array.isArray(body.parts) ? body.parts : [];
+    if (parts.length !== partCount(v.size) || parts.some((p: any, i: number) => p?.partNumber !== i + 1 || typeof p?.etag !== 'string')) {
+      return c.json({ error: 'パートが揃っていません' }, 400);
+    }
+    try {
+      if (canPresign(c.env)) {
+        await completeMultipartUpload(c.env, v.r2_key, v.upload_id, parts);
+      } else {
+        await c.env.FILES.resumeMultipartUpload(v.r2_key, v.upload_id).complete(parts);
+      }
+    } catch (e) {
+      return c.json({ error: `アップロードを完了できません（${String((e as Error).message ?? e)}）` }, 400);
+    }
+    const head = await c.env.FILES.head(v.r2_key);
+    if (!head || head.size !== v.size) {
+      return c.json({ error: '大きさが申告と違います' }, 400);
+    }
+    await c.env.DB.prepare("UPDATE versions SET state = 'inspecting', upload_id = NULL WHERE id = ?").bind(v.id).run();
     await c.env.INSPECT.send({ versionId: v.id });
   }
   return c.json({ state: v.state === 'uploading' ? 'inspecting' : v.state });
