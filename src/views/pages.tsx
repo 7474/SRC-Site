@@ -252,10 +252,19 @@ export function EditPage(props: {
       </section>
       <section>
         <h2>新しい版を上げる</h2>
-        <p>シナリオのフォルダを zip にしたものを選んでください（1 GB まで）。上げる前に、ブラウザの中で zip の中身（.eve があるか、実行ファイルが無いか など）と、データ・イベントの書き方（srcsharp lint と同じ検査）、Call の飛び先のラベルや include するファイルがあるかを確かめます。上げると、すぐに公開されます。</p>
+        <p>シナリオのフォルダを zip にしたものを選んでください（1 GB まで）。上げる前に、ブラウザの中で zip の中身（.eve があるか、実行ファイルが無いか など）を確かめます。上げると、すぐに公開されます。</p>
+        <p>あわせて、データ・イベントの書き方（srcsharp lint と同じ検査）、Call の飛び先のラベルや include するファイルがあるか、画像・音などの素材のファイルがあるかを確かめられます。どこまで確かめるかは下で選べます。素材が無いことは知らせるだけで、上げるのは止めません。</p>
         <form id="upload" class="form" data-slug={props.slug} data-direct={props.directUpload ? '1' : '0'} data-system-archives={JSON.stringify(systemArchives)}>
           <input type="file" name="file" accept=".zip,application/zip" required />
           <label>この版の説明（任意）<input name="note" maxlength={200} /></label>
+          <label>上げる前の確かめ
+            <select name="lintLevel">
+              <option value="stop">問題があれば止める（確かめてから上げる）</option>
+              <option value="warn">問題を表示して、そのまま上げる</option>
+              <option value="off">確かめない</option>
+            </select>
+          </label>
+          <label class="check"><input type="checkbox" name="lintAssets" checked /> 素材（画像・音・マップ）のファイルがあるかも見る（知らせるだけ）</label>
           <Turnstile siteKey={props.turnstileKey} />
           <button type="submit">上げる</button>
           <progress hidden max={100} value={0}></progress>

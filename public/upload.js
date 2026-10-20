@@ -1,6 +1,8 @@
 // 新しい版のアップロード（/my/scenarios/:slug）。
 // 1. zip の目次をブラウザで検査する（precheck.js。Worker の検査と同じ規則）
-// → 1'. データとイベントを lint する（/lint/srclint.js。srcsharp lint と同じ検査。問題があれば一覧を出し、確認してから上げる） → 2. 大きさを送って版を作る
+// → 1'. データとイベントを lint する（/lint/srclint.js。srcsharp lint と同じ検査と、ラベル・include・素材の参照の静的解析）
+//      どこまで確かめるかは投稿者が選ぶ（lintLevel: stop＝エラー・警告があれば止める / warn＝表示して上げる / off＝確かめない）。素材が無いこと（info）では止めない
+// → 2. 大きさを送って版を作る
 // → 3. パートに分けて上げる（R2 へ直接か Worker を通す） → 4. 完了を知らせる → 5. 検査が済むまで状態を見る
 (() => {
 
@@ -17,12 +19,31 @@
     status.textContent = text;
     status.classList.toggle('error', Boolean(error));
   };
-  // 選んだ zip が変わったら lint の結果と確認を消す
-  form.file.addEventListener('change', () => {
+  const clearLint = () => {
     lintBox.hidden = true;
     lintConfirm.hidden = true;
     form.lintConfirm.checked = false;
-  });
+  };
+  // 選んだ zip か確かめ方が変わったら lint の結果と確認を消す
+  form.file.addEventListener('change', clearLint);
+  // 確かめ方は次の投稿でも使う（保存できなくても既定のまま使える）
+  try {
+    const saved = JSON.parse(localStorage.getItem('upload.lint') || '{}');
+    if ([...form.lintLevel.options].some(o => o.value === saved.level)) {
+      form.lintLevel.value = saved.level;
+    }
+    if (typeof saved.assets === 'boolean') {
+      form.lintAssets.checked = saved.assets;
+    }
+  } catch {}
+  for (const input of [form.lintLevel, form.lintAssets]) {
+    input.addEventListener('change', () => {
+      clearLint();
+      try {
+        localStorage.setItem('upload.lint', JSON.stringify({ level: form.lintLevel.value, assets: form.lintAssets.checked }));
+      } catch {}
+    });
+  }
   // lint の実行環境（WebAssembly）を先に読み込んでおく。読み込めなくても投稿はできる
   const lintModule = import('/lint/srclint.js').then(m => (m.preload(), m)).catch(() => null);
 
@@ -46,12 +67,19 @@
         show(`この zip は上げられません: ${checked.reason}`, true);
         return;
       }
-      if (!form.lintConfirm.checked) {
+      const level = form.lintLevel.value;
+      let found = [];
+      if (level !== 'off' && !form.lintConfirm.checked) {
         show('データとイベントを確かめています（srcsharp lint）…');
-        const problems = await lint(file);
-        if (problems.length) {
-          showLint(problems);
-          show(`問題が ${problems.length} 件あります。直してから上げ直すか、「問題があっても上げる」を選んで上げてください。`, true);
+        found = await lint(file, form.lintAssets.checked);
+        const blocking = found.filter(d => d.severity !== 'info');
+        if (found.length) {
+          showLint(found, level === 'stop' && blocking.length > 0);
+        } else {
+          clearLint();
+        }
+        if (level === 'stop' && blocking.length) {
+          show(`問題が ${blocking.length} 件あります。直してから上げ直すか、「問題があっても上げる」を選んで上げてください。`, true);
           return;
         }
       }
@@ -80,8 +108,17 @@
         await new Promise(r => setTimeout(r, 2000));
         const v = await json(await fetch(`/api/versions/${created.versionId}`));
         if (v.state === 'published') {
-          show(`第 ${v.number} 版を公開しました。`);
-          location.href = `/my/scenarios/${encodeURIComponent(v.slug)}?saved=1`;
+          const href = `/my/scenarios/${encodeURIComponent(v.slug)}?saved=1`;
+          if (!found.length) {
+            show(`第 ${v.number} 版を公開しました。`);
+            location.href = href;
+            return;
+          }
+          // 確かめた結果を読めるように、頁は移らない
+          show(`第 ${v.number} 版を公開しました。確かめた結果は下のとおりです。`);
+          const link = status.appendChild(document.createElement('a'));
+          link.href = href;
+          link.textContent = ' 版の一覧へ';
           return;
         }
         if (v.state === 'rejected') {
@@ -97,14 +134,14 @@
     }
   });
 
-  // srcsharp lint と同じ検査（SRCLintWeb）。汎用データはこのシナリオが重ねるパックから読む。lint を使えなければ問題なしとして扱う
-  async function lint(file) {
+  // srcsharp lint と同じ検査（SRCLintWeb）。汎用データと素材はこのシナリオが重ねるパックからも探す。lint を使えなければ問題なしとして扱う
+  async function lint(file, assets) {
     const m = await lintModule;
     if (!m) {
       return [];
     }
     try {
-      const result = await m.lintZip(file, { systemArchives: JSON.parse(form.dataset.systemArchives || '[]') });
+      const result = await m.lintZip(file, { systemArchives: JSON.parse(form.dataset.systemArchives || '[]'), assets });
       return result.diagnostics;
     } catch (err) {
       console.warn('lint に失敗しました', err);
@@ -112,7 +149,11 @@
     }
   }
 
-  function showLint(problems) {
+  const KINDS = { error: 'エラー', warning: '警告', info: '素材' };
+  // 一覧を出す。confirm なら「問題があっても上げる」も出す。エラー・警告を先に並べる
+  function showLint(found, confirm) {
+    const order = { error: 0, warning: 1, info: 2 };
+    const problems = [...found].sort((a, b) => order[a.severity] - order[b.severity]);
     const table = document.createElement('table');
     const head = table.createTHead().insertRow();
     for (const h of ['ファイル', '行', '種類', '内容']) {
@@ -121,7 +162,7 @@
     const body = table.createTBody();
     for (const d of problems.slice(0, 200)) {
       const row = body.insertRow();
-      const cells = [d.file, d.line, d.severity === 'error' ? 'エラー' : '警告', d.message + (d.source ? `（${d.source}）` : '')];
+      const cells = [d.file, d.line, KINDS[d.severity] ?? d.severity, d.message + (d.source && d.severity !== 'info' ? `（${d.source}）` : '')];
       cells.forEach((v, i) => {
         const td = row.insertCell();
         td.textContent = String(v);
@@ -133,7 +174,7 @@
       lintBox.appendChild(document.createElement('p')).textContent = `ほか ${problems.length - 200} 件`;
     }
     lintBox.hidden = false;
-    lintConfirm.hidden = false;
+    lintConfirm.hidden = !confirm;
   }
 
   async function json(response) {
