@@ -35,7 +35,7 @@ class Agent {
   }
 }
 
-function zipFolder(dir, extra) {
+function zipFolder(dir, extra, pad = 0) {
   const out = join(mkdtempSync(join(tmpdir(), 'smoke-')), 'scenario.zip');
   execFileSync('python3', ['-I', '-c', `
 import os, sys, zipfile
@@ -48,7 +48,9 @@ with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as z:
             z.write(p, os.path.join(root, os.path.relpath(p, src)))
     if extra:
         z.writestr(os.path.join(root, extra), b'MZ')
-`, dir, out, extra ?? '']);
+    if int(sys.argv[4]):
+        z.writestr(os.path.join(root, 'padding.bin'), os.urandom(int(sys.argv[4])), zipfile.ZIP_STORED)
+`, dir, out, extra ?? '', String(pad)]);
   return readFileSync(out);
 }
 
@@ -57,10 +59,28 @@ async function upload(agent, data) {
   let res = await agent.req(`/api/scenarios/${slug}/versions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ size: data.length, sha256 }) });
   assert.equal(res.status, 200, await res.clone().text());
   const created = await res.json();
-  res = await agent.req(created.uploadUrl, { method: 'PUT', headers: { 'Content-Type': created.contentType }, body: data });
-  assert.equal(res.status, 200, 'upload');
-  res = await agent.req(`/api/versions/${created.versionId}/complete`, { method: 'POST' });
-  assert.equal(res.status, 200, 'complete');
+  assert.equal(created.parts, Math.ceil(data.length / created.partSize));
+  const parts = [];
+  for (let n = 1; n <= created.parts; n++) {
+    const body = data.subarray((n - 1) * created.partSize, n * created.partSize);
+    res = await agent.req(`/api/versions/${created.versionId}/parts/${n}`);
+    const target = await res.json();
+    assert.equal(target.direct, false, 'ローカルでは Worker を通す');
+    assert.equal(target.length, body.length);
+    const url = target.url;
+    if (n === 1) {
+      res = await agent.req(url, { method: 'PUT', body: body.subarray(1) });
+      assert.equal(res.status, 400, '大きさが違うパートは断る');
+      // 同じパートを上げ直してもよい（通信が切れたときの再試行）
+      res = await agent.req(url, { method: 'PUT', body });
+      assert.equal(res.status, 200, 'part');
+    }
+    res = await agent.req(url, { method: 'PUT', body });
+    assert.equal(res.status, 200, 'part');
+    parts.push(await res.json());
+  }
+  res = await agent.req(`/api/versions/${created.versionId}/complete`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ parts }) });
+  assert.equal(res.status, 200, 'complete ' + await res.clone().text());
   for (let i = 0; i < 60; i++) {
     await new Promise(r => setTimeout(r, 500));
     const v = await (await agent.req(`/api/versions/${created.versionId}`)).json();
@@ -157,6 +177,13 @@ step('運営が止める → 再開');
 
 res = await visitor.req('/admin');
 assert.equal(res.status, 404, '運営の頁は運営だけ');
+
+// 複数のパートに分かれる大きさ（Worker を通したマルチパートアップロード）
+const large = zipFolder(folder, undefined, 70 * 1024 * 1024);
+v = await upload(alice, large);
+assert.equal(v.state, 'published', v.note);
+step(`第 ${v.number} 版の投稿と検査（${large.length} バイト、パートに分けて）`);
+
 res = await alice.form(`/my/scenarios/${slug}/delete`, {});
 assert.equal(res.status, 302);
 assert.equal((await visitor.req(entry.archive)).status, 404);
