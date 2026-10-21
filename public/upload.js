@@ -142,7 +142,9 @@
     }
     try {
       const result = await m.lintZip(file, { systemArchives: JSON.parse(form.dataset.systemArchives || '[]'), assets });
-      return result.diagnostics;
+      // zip の最上位のフォルダ（シナリオのフォルダ）は、どの行も同じなので省く
+      const prefix = result.root ? result.root + '/' : '';
+      return result.diagnostics.map(d => ({ ...d, file: d.file.startsWith(prefix) ? d.file.slice(prefix.length) : d.file }));
     } catch (err) {
       console.warn('lint に失敗しました', err);
       return [];
@@ -162,6 +164,7 @@
     const body = table.createTBody();
     for (const d of problems.slice(0, 200)) {
       const row = body.insertRow();
+      row.className = `sev-${d.severity}`;
       const cells = [d.file, d.line, KINDS[d.severity] ?? d.severity, d.message + (d.source && d.severity !== 'info' ? `（${d.source}）` : '')];
       cells.forEach((v, i) => {
         const td = row.insertCell();

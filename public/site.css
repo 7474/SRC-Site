@@ -105,6 +105,14 @@ dl dd { margin-left: 0; }
   .version-list form.compact input { width: 100%; }
 }
 [hidden] { display: none !important; }
-.lint { margin-top: 8px; max-height: 360px; overflow: auto; }
-.lint td { font-size: 13px; }
-.lint td.file { word-break: break-all; }
+/* 確かめた結果の一覧。列の幅を決めておき、長いパスや名前は折り返す（横に広がらない） */
+.lint { margin-top: 8px; max-height: 360px; overflow-y: auto; }
+.lint table { display: table; table-layout: fixed; width: 100%; }
+.lint th:nth-child(1) { width: 32%; }
+.lint th:nth-child(2) { width: 3.5em; }
+.lint th:nth-child(3) { width: 4.5em; }
+.lint th, .lint td { font-size: 13px; padding: 4px 6px; overflow-wrap: anywhere; word-break: normal; }
+.lint td:nth-child(2) { text-align: right; }
+.lint td:nth-child(3) { white-space: nowrap; }
+.lint tr.sev-info td:nth-child(3) { color: var(--muted); }
+.lint tr.sev-error td:nth-child(3) { color: var(--error); font-weight: 600; }
