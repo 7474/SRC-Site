@@ -116,3 +116,5 @@ dl dd { margin-left: 0; }
 .lint td:nth-child(3) { white-space: nowrap; }
 .lint tr.sev-info td:nth-child(3) { color: var(--muted); }
 .lint tr.sev-error td:nth-child(3) { color: var(--error); font-weight: 600; }
+/* 投稿の状態。lint の進み具合は 2 行目に扱っているファイルを出す */
+#upload .status { white-space: pre-line; overflow-wrap: anywhere; }

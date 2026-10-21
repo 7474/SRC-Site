@@ -269,6 +269,7 @@ export function EditPage(props: {
           <button type="submit">上げる</button>
           <progress hidden max={100} value={0}></progress>
           <p class="status" aria-live="polite"></p>
+          <button type="button" class="lint-cancel" hidden>確かめるのをやめる</button>
           <div class="lint" hidden></div>
           <label class="check lint-confirm" hidden><input type="checkbox" name="lintConfirm" /> 問題があっても上げる</label>
         </form>
