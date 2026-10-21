@@ -10,6 +10,9 @@ export function Layout(props: { title: string; siteName: string; user: User | nu
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <title>{title === siteName ? siteName : `${title} - ${siteName}`}</title>
         <link rel="stylesheet" href="/static/site.css" />
+        <link rel="icon" href="/static/favicon.ico" sizes="16x16 32x32 48x48 64x64" />
+        <link rel="icon" type="image/png" href="/static/icon.png" sizes="128x128" />
+        <link rel="apple-touch-icon" href="/static/apple-touch-icon.png" />
         {props.head}
       </head>
       <body>

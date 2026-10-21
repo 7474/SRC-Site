@@ -15,6 +15,7 @@
   const button = form.querySelector('button[type=submit]');
   const lintBox = form.querySelector('.lint');
   const lintConfirm = form.querySelector('.lint-confirm');
+  const lintCancel = form.querySelector('.lint-cancel');
   const show = (text, error) => {
     status.textContent = text;
     status.classList.toggle('error', Boolean(error));
@@ -70,8 +71,12 @@
       const level = form.lintLevel.value;
       let found = [];
       if (level !== 'off' && !form.lintConfirm.checked) {
-        show('データとイベントを確かめています（srcsharp lint）…');
         found = await lint(file, form.lintAssets.checked);
+        if (!found) {
+          show('確かめるのをやめました。もう一度「上げる」を押すと、初めから確かめます。');
+          return;
+        }
+        progress.value = 0;
         const blocking = found.filter(d => d.severity !== 'info');
         if (found.length) {
           showLint(found, level === 'stop' && blocking.length > 0);
@@ -134,20 +139,77 @@
     }
   });
 
-  // srcsharp lint と同じ検査（SRCLintWeb）。汎用データと素材はこのシナリオが重ねるパックからも探す。lint を使えなければ問題なしとして扱う
+  // lint の段階（srclint.js の PHASES）ごとの名前と、進捗バーでの重み（手元で計った時間のおおよその割合）
+  const LINT_PHASES = {
+    scenario: { label: 'zip からデータとイベントを取り出しています', weight: 10 },
+    system: { label: '汎用データを読んでいます', weight: 35 },
+    runtime: { label: '検査の準備をしています', weight: 10 },
+    data: { label: 'データとイベントを検査しています', weight: 30 },
+    analyze: { label: 'ラベルと include を確かめています', weight: 10 },
+    assets: { label: '素材のファイルを確かめています', weight: 5 },
+  };
+
+  // srcsharp lint と同じ検査（SRCLintWeb）。汎用データと素材はこのシナリオが重ねるパックからも探す。
+  // 進み具合（段階・扱っているファイル・経過時間）を出し、「確かめるのをやめる」で止められる。止めたら null。lint を使えなければ問題なしとして扱う
   async function lint(file, assets) {
-    const m = await lintModule;
-    if (!m) {
-      return [];
-    }
+    const started = Date.now();
+    let last = null;
+    const render = () => {
+      const seconds = Math.floor((Date.now() - started) / 1000);
+      if (!last) {
+        show(`データとイベントを確かめています（${seconds} 秒）…`);
+        return;
+      }
+      // 済んだ段階の重み ＋ いまの段階の重み × 段階の中の割合
+      let value = 0;
+      for (const [name, p] of Object.entries(LINT_PHASES)) {
+        if (name === last.phase) {
+          value += p.weight * (last.total ? last.done / last.total : 0);
+          break;
+        }
+        value += p.weight;
+      }
+      progress.value = value;
+      const phase = LINT_PHASES[last.phase] ?? { label: last.phase };
+      const count = last.total > 1 ? `（${Math.min(last.done + 1, last.total)}／${last.total}）` : '';
+      // パックの zip（/files/packs/<id>/<版>.zip）はパックの名前だけにする
+      const target = last.file.replace(/^([^/:]+)\/[^/:]+\.zip/, '$1');
+      show(`${phase.label}${count}… ${seconds} 秒\n${target}`);
+    };
+    progress.value = 0;
+    render();
+    const timer = setInterval(render, 1000);
+    const controller = new AbortController();
+    const cancel = () => controller.abort();
+    lintCancel.hidden = false;
+    lintCancel.addEventListener('click', cancel);
     try {
-      const result = await m.lintZip(file, { systemArchives: JSON.parse(form.dataset.systemArchives || '[]'), assets });
+      const m = await lintModule;
+      if (!m) {
+        return [];
+      }
+      const result = await m.lintZip(file, {
+        systemArchives: JSON.parse(form.dataset.systemArchives || '[]'),
+        assets,
+        signal: controller.signal,
+        onProgress: p => {
+          last = p;
+          render();
+        },
+      });
       // zip の最上位のフォルダ（シナリオのフォルダ）は、どの行も同じなので省く
       const prefix = result.root ? result.root + '/' : '';
       return result.diagnostics.map(d => ({ ...d, file: d.file.startsWith(prefix) ? d.file.slice(prefix.length) : d.file }));
     } catch (err) {
+      if (controller.signal.aborted) {
+        return null;
+      }
       console.warn('lint に失敗しました', err);
       return [];
+    } finally {
+      clearInterval(timer);
+      lintCancel.hidden = true;
+      lintCancel.removeEventListener('click', cancel);
     }
   }
 
