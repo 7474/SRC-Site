@@ -15,7 +15,7 @@ admin.get('/', async c => {
   const hidden = (await c.env.DB.prepare('SELECT slug, title, hidden_reason FROM scenarios WHERE hidden = 1 ORDER BY updated_at DESC LIMIT 100').all<HiddenItem>()).results;
   c.header('Cache-Control', 'private, no-store');
   return c.html(
-    <Layout title="運営" siteName={c.env.SITE_NAME} user={c.get('user')}>
+    <Layout title="運営" siteName={c.env.SITE_NAME} user={c.get('user')} path={c.req.path}>
       <AdminPage users={users} hidden={hidden} message={c.req.query('m')} />
     </Layout>,
   );

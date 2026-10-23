@@ -44,13 +44,49 @@ main { flex: 1; width: 100%; max-width: 880px; margin: 0 auto; padding: 16px; }
 .site-name { grid-area: brand; font-weight: 700; font-size: 18px; color: var(--text); text-decoration: none; }
 .site-header .search { grid-area: search; margin: 0; }
 .site-header .search input { display: block; width: 100%; }
-.site-header nav { grid-area: nav; display: flex; gap: 14px; white-space: nowrap; }
-.site-header nav a { text-decoration: none; }
-.site-header nav a:hover { text-decoration: underline; }
+/* ヘッダのリンクは「遊ぶ」とアカウントだけ。どの幅でも 1 行に収める（長いハンドルは省略する） */
+.site-nav { grid-area: nav; display: flex; align-items: center; gap: 16px; white-space: nowrap; min-width: 0; }
+.site-nav > a { text-decoration: none; color: var(--accent); }
+.site-nav > a:hover { text-decoration: underline; }
+.site-header [aria-current="page"] { text-decoration: underline; text-underline-offset: 4px; text-decoration-thickness: 2px; }
+.site-name[aria-current="page"], .account summary[aria-current="page"] { text-decoration: none; }
+.account { position: relative; min-width: 0; }
+/* アカウントのメニューを開くボタン（枠・人の印・▼で、リンクと見分けられるようにする） */
+.account summary {
+  display: flex; align-items: center; gap: 6px; padding: 5px 10px; cursor: pointer; list-style: none;
+  color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 999px;
+}
+.account summary::-webkit-details-marker { display: none; }
+.account summary:hover { background: var(--bg); }
+.account summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.account summary[aria-current="page"] { border-color: var(--accent); }
+.account[open] summary { background: var(--bg); }
+.account .icon { flex: none; color: var(--muted); }
+.account .chevron { flex: none; transition: transform 0.15s; }
+.account[open] .chevron { transform: rotate(180deg); }
+.account .handle { overflow: hidden; text-overflow: ellipsis; max-width: 10em; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.account .menu {
+  position: absolute; right: 0; top: calc(100% + 8px); z-index: 10; min-width: 12em;
+  display: flex; flex-direction: column; padding: 6px 0;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+}
+.account .menu a, .account .menu button {
+  display: block; width: 100%; padding: 8px 16px; text-align: left; text-decoration: none;
+  font: inherit; color: var(--text); background: none; border: 0; border-radius: 0; cursor: pointer;
+}
+.account .menu a:hover, .account .menu button:hover { background: var(--bg); }
+.account .menu a[aria-current="page"] { font-weight: 600; text-decoration: none; }
+.account .menu form { margin: 0; border-top: 1px solid var(--line); margin-top: 6px; padding-top: 6px; }
+/* フッターは「道具と素材」と「サイトについて」に分けて並べる */
 .site-footer {
   width: 100%; max-width: 880px; margin: 32px auto 0; padding: 16px;
-  display: flex; flex-wrap: wrap; gap: 16px; color: var(--muted); font-size: 13px; border-top: 1px solid var(--line);
+  display: flex; flex-wrap: wrap; gap: 8px 32px; color: var(--muted); font-size: 13px; border-top: 1px solid var(--line);
 }
+.site-footer nav { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.footer-label { font-weight: 600; color: var(--text); }
+.site-footer [aria-current="page"] { font-weight: 600; }
+.intro .tools { font-size: 14px; color: var(--muted); }
 h1 { font-size: 24px; line-height: 1.4; margin: 12px 0; }
 h2 { font-size: 18px; margin: 24px 0 8px; }
 section, article { margin-bottom: 16px; }
@@ -101,7 +137,8 @@ dl dd { margin-left: 0; }
 @media (max-width: 600px) {
   table { display: block; overflow-x: auto; }
   .site-header-inner { grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "brand nav" "search search"; }
-  .site-header nav { justify-content: flex-end; }
+  .site-nav { justify-content: flex-end; }
+  .account .handle { max-width: 6.5em; }
   .version-list form.compact input { width: 100%; }
 }
 [hidden] { display: none !important; }
