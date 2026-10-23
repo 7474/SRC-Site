@@ -3,6 +3,7 @@
 #   dist/static/  ポータルの CSS・JS（public/）
 #   dist/play/    SRC#Web の発行物（$SRCWEB_DIR。無ければ仮の頁）
 #   dist/lint/    ブラウザで動く lint の発行物（$SRCLINT_DIR。7474/SRC の SRCLintWeb。無ければ置かず、投稿の画面は lint を飛ばす）
+#   dist/viewer/  データビューアの発行物（$SRCVIEWER_DIR。7474/SRC の SRCTestBlazor。無ければ置かない）
 # 使い方: SRCWEB_DIR=out/web/wwwroot SRCLINT_DIR=out/lint/wwwroot SRC_VERSION="master abc1234" scripts/assemble.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -21,7 +22,7 @@ if [ -n "${SRCWEB_DIR:-}" ]; then
   # ポータルの外の zip は読ませない（カタログは /api/catalog.json だけ）
   cat > dist/play/srcweb.json <<JSON
 {
-  "title": "${SITE_TITLE:-SRC-Site}",
+  "title": "${SITE_TITLE:-SRC#Site}",
   "catalogs": ["/api/catalog.json"],
   "playCatalog": "/api/catalog/{id}.json",
   "allowUserArchives": true,
@@ -48,4 +49,27 @@ if [ -n "${SRCLINT_DIR:-}" ]; then
     mkdir -p "dist/lint/$(dirname "$f")"
     cp "$SRCLINT_DIR/$f" "dist/lint/$f"
   done
+fi
+
+if [ -n "${SRCVIEWER_DIR:-}" ]; then
+  mkdir -p dist/viewer
+  # 事前に圧縮したもの（.br・.gz）は置かない。ほかは Service Worker が一覧（service-worker-assets.js）のすべてを読むので、使わないものも置く
+  (cd "$SRCVIEWER_DIR" && find . -type f ! -name '*.br' ! -name '*.gz') | while read -r f; do
+    mkdir -p "dist/viewer/$(dirname "$f")"
+    cp "$SRCVIEWER_DIR/$f" "dist/viewer/$f"
+  done
+  # /viewer/ の下に置く。index.html を書き換えたので、Service Worker が確かめるハッシュも直す
+  sed -i 's#<base href="/" />#<base href="/viewer/" />#' dist/viewer/index.html
+  grep -q '<base href="/viewer/" />' dist/viewer/index.html
+  if [ -f dist/viewer/service-worker-assets.js ]; then
+    hash="sha256-$(openssl dgst -sha256 -binary dist/viewer/index.html | base64 -w0)"
+    node -e '
+      const fs = require("fs");
+      const [file, hash] = process.argv.slice(1);
+      const text = fs.readFileSync(file, "utf8");
+      const next = text.replace(/("hash":\s*")[^"]*(",\s*"url":\s*"index\.html")/, `$1${hash}$2`);
+      if (next === text) { console.error("service-worker-assets.js に index.html がありません"); process.exit(1); }
+      fs.writeFileSync(file, next);
+    ' dist/viewer/service-worker-assets.js "$hash"
+  fi
 fi

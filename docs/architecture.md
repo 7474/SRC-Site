@@ -92,6 +92,8 @@ src-site/
 | `/api/` | JSON（カタログ・投稿の API） | カタログは不要、投稿は要 | カタログは `public, max-age=60` |
 | `/files/` | zip（版を含めて不変） | 不要 | `public, max-age=31536000, immutable` |
 | `/play/` | SRC#Web（クロスオリジン分離） | 不要 | 静的アセット |
+| `/lint/` | ブラウザで動く lint（7474/SRC の SRCLintWeb） | 不要 | 静的アセット |
+| `/viewer/` | データビューア（7474/SRC の SRCTestBlazor。srcv.7474.jp と同じもの）。データは 7474/SRC-Data（GitHub）からブラウザが読む。頁の中の道は `index.html` を返す | 不要 | 静的アセット |
 | `/static/` | ポータルの CSS・JS | 不要 | 静的アセット |
 
 ### 公開の画面
