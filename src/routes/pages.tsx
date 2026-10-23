@@ -14,7 +14,7 @@ export const pages = new Hono<AppEnv>();
 
 function render(c: Context<AppEnv>, title: string, body: Child, status: 200 | 400 | 403 | 404 = 200) {
   c.header('Cache-Control', 'private, no-store');
-  return c.html(<Layout title={title} siteName={c.env.SITE_NAME} user={c.get('user')}>{body}</Layout>, status);
+  return c.html(<Layout title={title} siteName={c.env.SITE_NAME} user={c.get('user')} path={c.req.path}>{body}</Layout>, status);
 }
 
 function notFound(c: Context<AppEnv>) {
