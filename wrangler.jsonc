@@ -15,7 +15,7 @@
     "run_worker_first": true
   },
   "vars": {
-    "SITE_NAME": "SRC-Site",
+    "SITE_NAME": "SRC#Site",
     "R2_BUCKET": "src-site-dev"
   },
   "d1_databases": [
@@ -45,7 +45,7 @@
   "env": {
     "production": {
       "name": "src-site",
-      "vars": { "SITE_NAME": "SRC-Site", "R2_BUCKET": "src-site", "REPORT_FORM_URL": "https://docs.google.com/forms/d/e/1FAIpQLSeWaqUfmgC0xPP9zXYV5kYqyJu0iHbH5Xzmmmn6ykEH1SBUNw/viewform?usp=pp_url&entry.1926660821={url}&entry.1488419007={title}" },
+      "vars": { "SITE_NAME": "SRC#Site", "R2_BUCKET": "src-site", "REPORT_FORM_URL": "https://docs.google.com/forms/d/e/1FAIpQLSeWaqUfmgC0xPP9zXYV5kYqyJu0iHbH5Xzmmmn6ykEH1SBUNw/viewform?usp=pp_url&entry.1926660821={url}&entry.1488419007={title}" },
       "routes": [{ "pattern": "src.koudenpa.net", "custom_domain": true }],
       "d1_databases": [
         { "binding": "DB", "database_name": "src-site", "database_id": "5a6976ca-0570-42dc-b095-617bb214c642", "migrations_dir": "migrations" }

@@ -22,7 +22,7 @@ if [ -n "${SRCWEB_DIR:-}" ]; then
   # ポータルの外の zip は読ませない（カタログは /api/catalog.json だけ）
   cat > dist/play/srcweb.json <<JSON
 {
-  "title": "${SITE_TITLE:-SRC-Site}",
+  "title": "${SITE_TITLE:-SRC#Site}",
   "catalogs": ["/api/catalog.json"],
   "playCatalog": "/api/catalog/{id}.json",
   "allowUserArchives": true,
