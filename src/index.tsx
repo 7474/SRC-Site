@@ -56,6 +56,20 @@ app.on(['GET', 'HEAD'], '/play/*', async c => {
 app.on(['GET', 'HEAD'], '/static/*', c => c.env.ASSETS.fetch(c.req.raw));
 // ブラウザで動く lint（7474/SRC の SRCLintWeb。スレッドを使わないのでクロスオリジン分離は要らない）。投稿の画面が読み込む
 app.on(['GET', 'HEAD'], '/lint/*', c => c.env.ASSETS.fetch(c.req.raw));
+// データビューア（7474/SRC の SRCTestBlazor）。データは 7474/SRC-Data（GitHub）からブラウザが読む
+app.get('/viewer', c => c.redirect('/viewer/'));
+app.on(['GET', 'HEAD'], '/viewer/*', async c => {
+  // index.html は /viewer/ への転送にせず、そのまま返す（Service Worker が転送された応答をキャッシュすると、頁を開けなくなる）
+  if (new URL(c.req.url).pathname === '/viewer/index.html') {
+    return c.env.ASSETS.fetch(new Request(new URL('/viewer/', c.req.url), c.req.raw));
+  }
+  const response = await c.env.ASSETS.fetch(c.req.raw);
+  // 頁の中の道（/viewer/titles/... など）は index.html を返し、Blazor のルーティングに任せる
+  if (response.status === 404 && (c.req.header('Accept') ?? '').includes('text/html')) {
+    return c.env.ASSETS.fetch(new Request(new URL('/viewer/', c.req.url), c.req.raw));
+  }
+  return response;
+});
 app.get('/favicon.ico', c => c.env.ASSETS.fetch(new Request(new URL('/static/favicon.ico', c.req.url))));
 
 // ログインしている利用者

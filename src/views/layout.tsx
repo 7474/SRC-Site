@@ -24,6 +24,7 @@ export function Layout(props: { title: string; siteName: string; user: User | nu
           </form>
           <nav>
             <a href="/play/">SRC#Web で遊ぶ</a>
+            <a href="/viewer/">データビューア</a>
             {user ? (
               <>
                 <a href="/my/scenarios/new">投稿</a>

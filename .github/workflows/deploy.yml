@@ -82,7 +82,8 @@ jobs:
           path: |
             out/web
             out/lint
-          key: srcweb-aot-lint-${{ steps.src.outputs.sha }}
+            out/viewer
+          key: srcweb-aot-lint-viewer-${{ steps.src.outputs.sha }}
 
       - uses: actions/setup-dotnet@v6
         if: steps.published.outputs.cache-hit != 'true'
@@ -111,6 +112,8 @@ jobs:
           if [ -f srcsharp/SRC.Sharp/SRCLintWeb/SRCLintWeb.csproj ]; then
             dotnet publish srcsharp/SRC.Sharp/SRCLintWeb/SRCLintWeb.csproj -c Release -o out/lint
           fi
+          # データビューア（7474/SRC の SRCTestBlazor。srcv.7474.jp と同じもの）
+          dotnet publish srcsharp/SRC.Sharp/SRCTestBlazor/SRCTestBlazor.csproj -c Release -o out/viewer
 
       - uses: actions/setup-node@v7
         with:
@@ -125,6 +128,7 @@ jobs:
           MACKEREL_CLIENT_TOKEN: ${{ secrets.MACKEREL_CLIENT_TOKEN }}
         run: |
           if [ -d out/lint/wwwroot ]; then export SRCLINT_DIR=out/lint/wwwroot; fi
+          if [ -d out/viewer/wwwroot ]; then export SRCVIEWER_DIR=out/viewer/wwwroot; fi
           SRCWEB_DIR=out/web/wwwroot SRC_VERSION="${SRC_REF} $(git -C srcsharp rev-parse --short HEAD)" bash scripts/assemble.sh
 
       - name: Deploy to Cloudflare
