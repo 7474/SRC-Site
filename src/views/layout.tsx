@@ -29,7 +29,13 @@ export function Layout(props: { title: string; siteName: string; user: User | nu
             <a href="/play/">遊ぶ</a>
             {user ? (
               <details class="account">
-                <summary aria-current={/^\/(my|admin)(\/|$)/.test(path) ? 'page' : undefined}><span class="handle">{user.handle}</span></summary>
+                {/* 押すとメニューが開くことが分かるよう、人の印と ▼ を付けたボタンの形にする */}
+                <summary aria-current={/^\/(my|admin)(\/|$)/.test(path) ? 'page' : undefined}>
+                  <svg class="icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="8" r="4" fill="none" stroke="currentColor" stroke-width="2" /><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
+                  <span class="handle">{user.handle}</span>
+                  <span class="visually-hidden">のメニュー</span>
+                  <svg class="chevron" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                </summary>
                 <div class="menu">
                   <a href="/my" aria-current={path === '/my' ? 'page' : undefined}>マイページ</a>
                   <a href="/my/scenarios/new" aria-current={path === '/my/scenarios/new' ? 'page' : undefined}>シナリオを投稿</a>
