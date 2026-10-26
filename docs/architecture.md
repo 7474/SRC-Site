@@ -93,6 +93,7 @@ src-site/
 | `/files/` | zip（版を含めて不変） | 不要 | `public, max-age=31536000, immutable` |
 | `/play/` | SRC#Web（クロスオリジン分離） | 不要 | 静的アセット |
 | `/lint/` | ブラウザで動く lint（7474/SRC の SRCLintWeb） | 不要 | 静的アセット |
+| `/check` | データ・シナリオのチェッカー。選ぶかドロップした zip・フォルダ・ファイルを、投稿と同じ検査（zip の目次の規則・srcsharp lint・静的解析・素材の参照）にかける。中身（シナリオか、データだけか）に合わせて確かめる。ファイルはブラウザの外に出さない（`public/check.js`） | 不要 | ― |
 | `/viewer/` | データビューア（7474/SRC の SRCTestBlazor。srcv.7474.jp と同じもの）。データは 7474/SRC-Data（GitHub）からブラウザが読む。頁の中の道は `index.html` を返す | 不要 | 静的アセット |
 | `/static/` | ポータルの CSS・JS | 不要 | 静的アセット |
 

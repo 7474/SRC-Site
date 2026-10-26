@@ -53,6 +53,7 @@ export function Layout(props: { title: string; siteName: string; user: User | nu
         <footer class="site-footer">
           <nav aria-label="道具と素材">
             <span class="footer-label">道具と素材</span>
+            <a href="/check" aria-current={path === '/check' ? 'page' : undefined}>チェッカー</a>
             <a href="/viewer/">データビューア</a>
             <a href="/packs" aria-current={path.startsWith('/packs') ? 'page' : undefined}>共有パック</a>
           </nav>

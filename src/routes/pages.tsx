@@ -4,6 +4,7 @@ import type { AppEnv } from '../env';
 import { Layout, Notice } from '../views/layout';
 import { EditPage, Home, MePage, NewScenarioPage, PackPage, PacksPage, ScenarioPage, Simple, UserPage, type ListItem, type ScenarioForm } from '../views/pages';
 import { Rights, Terms } from '../views/about';
+import { CheckPage, type CheckPack } from '../views/check';
 import { canEdit, canView, getScenario, LIST_SELECT, requireUser } from './common';
 import { verifyTurnstile } from '../lib/turnstile';
 import { canPresign } from '../lib/presign';
@@ -119,6 +120,12 @@ pages.get('/packs/:id', async c => {
   const takedowns = (await c.env.DB.prepare("SELECT target_id, reason, created_at FROM takedowns WHERE (target_type = 'pack' AND target_id = ?1) OR (target_type = 'pack_file' AND target_id LIKE ?1 || ':%') ORDER BY created_at DESC")
     .bind(p.id).all<any>()).results;
   return render(c, p.title, <PackPage p={p} takedowns={takedowns} />);
+});
+
+// データ・シナリオのチェッカー（ログインは要らない）。汎用データは公開しているパックから選ぶ
+pages.get('/check', async c => {
+  const packs = (await c.env.DB.prepare('SELECT id, title, is_default, version FROM packs WHERE withdrawn = 0 ORDER BY priority, id').all<CheckPack>()).results;
+  return render(c, 'データ・シナリオのチェック', <CheckPage packs={packs} />);
 });
 
 pages.get('/about/terms', c => render(c, '利用規約', <Terms />));
