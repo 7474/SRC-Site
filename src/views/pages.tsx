@@ -44,7 +44,7 @@ export function Home(props: { q: string; latest: ListItem[]; popular: ListItem[]
               <a class="button primary" href="/play/">SRC#Web で遊ぶ</a>
               <a class="button" href="/my/scenarios/new">シナリオを投稿する</a>
             </div>
-            <p class="tools">道具：<a href="/viewer/">データビューア</a>（ユニット・パイロットなどのデータを見る）・<a href="/packs">共有パック</a>（シナリオが使う汎用の素材）</p>
+            <p class="tools">道具：<a href="/check">チェッカー</a>（シナリオ・データの書き方を確かめる）・<a href="/viewer/">データビューア</a>（ユニット・パイロットなどのデータを見る）・<a href="/packs">共有パック</a>（シナリオが使う汎用の素材）</p>
           </section>
           {props.popular.length > 0 && (
             <section>
@@ -274,6 +274,7 @@ export function EditPage(props: {
           <div class="lint" hidden></div>
           <label class="check lint-confirm" hidden><input type="checkbox" name="lintConfirm" /> 問題があっても上げる</label>
         </form>
+        <script src="/static/lint-ui.js" defer></script>
         <script src="/static/upload.js" defer></script>
       </section>
       <section>

@@ -45,8 +45,6 @@
       } catch {}
     });
   }
-  // lint の実行環境（WebAssembly）を先に読み込んでおく。読み込めなくても投稿はできる
-  const lintModule = import('/lint/srclint.js').then(m => (m.preload(), m)).catch(() => null);
 
   form.addEventListener('submit', async e => {
     e.preventDefault();
@@ -139,106 +137,14 @@
     }
   });
 
-  // lint の段階（srclint.js の PHASES）ごとの名前と、進捗バーでの重み（手元で計った時間のおおよその割合）
-  const LINT_PHASES = {
-    scenario: { label: 'zip からデータとイベントを取り出しています', weight: 10 },
-    system: { label: '汎用データを読んでいます', weight: 35 },
-    runtime: { label: '検査の準備をしています', weight: 10 },
-    data: { label: 'データとイベントを検査しています', weight: 30 },
-    analyze: { label: 'ラベルと include を確かめています', weight: 10 },
-    assets: { label: '素材のファイルを確かめています', weight: 5 },
-  };
-
-  // srcsharp lint と同じ検査（SRCLintWeb）。汎用データと素材はこのシナリオが重ねるパックからも探す。
-  // 進み具合（段階・扱っているファイル・経過時間）を出し、「確かめるのをやめる」で止められる。止めたら null。lint を使えなければ問題なしとして扱う
-  async function lint(file, assets) {
-    const started = Date.now();
-    let last = null;
-    const render = () => {
-      const seconds = Math.floor((Date.now() - started) / 1000);
-      if (!last) {
-        show(`データとイベントを確かめています（${seconds} 秒）…`);
-        return;
-      }
-      // 済んだ段階の重み ＋ いまの段階の重み × 段階の中の割合
-      let value = 0;
-      for (const [name, p] of Object.entries(LINT_PHASES)) {
-        if (name === last.phase) {
-          value += p.weight * (last.total ? last.done / last.total : 0);
-          break;
-        }
-        value += p.weight;
-      }
-      progress.value = value;
-      const phase = LINT_PHASES[last.phase] ?? { label: last.phase };
-      const count = last.total > 1 ? `（${Math.min(last.done + 1, last.total)}／${last.total}）` : '';
-      // パックの zip（/files/packs/<id>/<版>.zip）はパックの名前だけにする
-      const target = last.file.replace(/^([^/:]+)\/[^/:]+\.zip/, '$1');
-      show(`${phase.label}${count}… ${seconds} 秒\n${target}`);
-    };
-    progress.value = 0;
-    render();
-    const timer = setInterval(render, 1000);
-    const controller = new AbortController();
-    const cancel = () => controller.abort();
-    lintCancel.hidden = false;
-    lintCancel.addEventListener('click', cancel);
-    try {
-      const m = await lintModule;
-      if (!m) {
-        return [];
-      }
-      const result = await m.lintZip(file, {
-        systemArchives: JSON.parse(form.dataset.systemArchives || '[]'),
-        assets,
-        signal: controller.signal,
-        onProgress: p => {
-          last = p;
-          render();
-        },
-      });
-      // zip の最上位のフォルダ（シナリオのフォルダ）は、どの行も同じなので省く
-      const prefix = result.root ? result.root + '/' : '';
-      return result.diagnostics.map(d => ({ ...d, file: d.file.startsWith(prefix) ? d.file.slice(prefix.length) : d.file }));
-    } catch (err) {
-      if (controller.signal.aborted) {
-        return null;
-      }
-      console.warn('lint に失敗しました', err);
-      return [];
-    } finally {
-      clearInterval(timer);
-      lintCancel.hidden = true;
-      lintCancel.removeEventListener('click', cancel);
-    }
+  // srcsharp lint と同じ検査（public/lint-ui.js）。汎用データと素材はこのシナリオが重ねるパックからも探す。止めたら null
+  function lint(file, assets) {
+    return SrcLint.run(file, { systemArchives: JSON.parse(form.dataset.systemArchives || '[]'), assets, show, progress, cancel: lintCancel });
   }
 
-  const KINDS = { error: 'エラー', warning: '警告', info: '素材' };
-  // 一覧を出す。confirm なら「問題があっても上げる」も出す。エラー・警告を先に並べる
+  // 一覧を出す。confirm なら「問題があっても上げる」も出す
   function showLint(found, confirm) {
-    const order = { error: 0, warning: 1, info: 2 };
-    const problems = [...found].sort((a, b) => order[a.severity] - order[b.severity]);
-    const table = document.createElement('table');
-    const head = table.createTHead().insertRow();
-    for (const h of ['ファイル', '行', '種類', '内容']) {
-      head.appendChild(document.createElement('th')).textContent = h;
-    }
-    const body = table.createTBody();
-    for (const d of problems.slice(0, 200)) {
-      const row = body.insertRow();
-      row.className = `sev-${d.severity}`;
-      const cells = [d.file, d.line, KINDS[d.severity] ?? d.severity, d.message + (d.source && d.severity !== 'info' ? `（${d.source}）` : '')];
-      cells.forEach((v, i) => {
-        const td = row.insertCell();
-        td.textContent = String(v);
-        if (i === 0) td.className = 'file';
-      });
-    }
-    lintBox.replaceChildren(table);
-    if (problems.length > 200) {
-      lintBox.appendChild(document.createElement('p')).textContent = `ほか ${problems.length - 200} 件`;
-    }
-    lintBox.hidden = false;
+    SrcLint.renderTable(lintBox, found);
     lintConfirm.hidden = !confirm;
   }
 
