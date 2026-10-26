@@ -1,7 +1,8 @@
 // データ・シナリオのチェッカー（/check）。選ぶかドロップした zip・フォルダ・ファイルを、ブラウザの中だけで確かめる。
 // 1. zip の目次を調べ、中身の種類（シナリオ・データだけ・どちらでもない）を決める（precheck.js の survey）
 // 2. 種類に合わせて srcsharp lint をかける（lint-ui.js）。結果は投稿の画面と同じ表で出す
-// zip でないもの（フォルダ・ファイル）は、.eve と .txt の中身と、ほかのファイルの名前だけを zip にまとめてから確かめる（素材は名前で探すため）
+// zip でないもの（フォルダ・ファイル）は、.eve と .txt の中身と、ほかのファイルの名前だけを zip にまとめてから確かめる（素材は名前で探すため）。
+// フォルダは、フォルダの名前を最上位に置いてまとめるので、そのフォルダを zip にしたもの（解凍したもの）と同じに確かめる
 (() => {
   const form = document.getElementById('check');
   if (!form) {
@@ -21,9 +22,15 @@
   };
   let current = null;
   let running = false;
+  // .git などの隠しフォルダは見ない（SRC は使わず、ファイルが多いことがある）
+  const HIDDEN = /(^|\/)\.[^/]+\//;
 
   form.file.addEventListener('change', () => fromFiles([...form.file.files].map(f => ({ path: f.name, file: f }))));
-  form.folder.addEventListener('change', () => fromFiles([...form.folder.files].map(f => ({ path: f.webkitRelativePath || f.name, file: f }))));
+  form.folder.addEventListener('change', () => fromFiles(
+    [...form.folder.files].map(f => ({ path: f.webkitRelativePath || f.name, file: f })).filter(f => !HIDDEN.test(f.path)),
+    [],
+    folderName([...form.folder.files].map(f => f.webkitRelativePath || f.name)),
+  ));
   recheck.addEventListener('click', () => current && check(current));
 
   // ドロップ（フォルダは中をたどる）
@@ -42,47 +49,77 @@
     e.preventDefault();
     zone.classList.remove('over');
     const entries = [...e.dataTransfer.items].map(i => i.webkitGetAsEntry?.()).filter(Boolean);
-    if (entries.length) {
-      const files = [];
-      for (const entry of entries) {
-        await walk(entry, '', files);
-      }
-      fromFiles(files);
-    } else {
+    if (!entries.length) {
       fromFiles([...e.dataTransfer.files].map(f => ({ path: f.name, file: f })));
-    }
-  });
-
-  async function walk(entry, prefix, out) {
-    if (entry.isFile) {
-      out.push({ path: prefix + entry.name, file: await new Promise((resolve, reject) => entry.file(resolve, reject)) });
       return;
     }
-    const reader = entry.createReader();
-    for (;;) {
-      const batch = await new Promise((resolve, reject) => reader.readEntries(resolve, reject));
-      if (!batch.length) {
-        break;
+    show('フォルダを読んでいます…');
+    const files = [];
+    const skipped = [];
+    for (const entry of entries) {
+      await walk(entry, '', files, skipped);
+    }
+    // フォルダを 1 つだけドロップしたときは、そのフォルダを zip にしたものと同じに扱う
+    const single = entries.length === 1 && entries[0].isDirectory ? entries[0].name : null;
+    fromFiles(files, skipped, single);
+  });
+
+  // ドロップしたフォルダをたどる。読めないもの（名前の文字など）は飛ばして skipped に入れる
+  async function walk(entry, prefix, out, skipped) {
+    const path = prefix + entry.name;
+    if (entry.isFile) {
+      try {
+        out.push({ path, file: await new Promise((resolve, reject) => entry.file(resolve, reject)) });
+      } catch {
+        skipped.push(path);
       }
-      for (const child of batch) {
-        await walk(child, prefix + entry.name + '/', out);
+      return;
+    }
+    if (prefix && entry.name.startsWith('.')) {
+      return;
+    }
+    try {
+      const reader = entry.createReader();
+      for (;;) {
+        const batch = await new Promise((resolve, reject) => reader.readEntries(resolve, reject));
+        if (!batch.length) {
+          break;
+        }
+        for (const child of batch) {
+          await walk(child, path + '/', out, skipped);
+        }
       }
+    } catch {
+      skipped.push(path + '/');
     }
   }
 
-  async function fromFiles(files) {
-    if (running || !files.length) {
+  // 「フォルダを選ぶ」で選んだフォルダの名前（webkitRelativePath の最初の部分）
+  function folderName(paths) {
+    const tops = new Set(paths.map(p => p.split('/')[0]));
+    return tops.size === 1 && paths.some(p => p.includes('/')) ? [...tops][0] : null;
+  }
+
+  /** files: [{ path, file }]、skipped: 読めなかったもの、folder: フォルダを 1 つ選んだならその名前 */
+  async function fromFiles(files, skipped = [], folder = null) {
+    if (running) {
+      return;
+    }
+    if (!files.length) {
+      show(skipped.length ? `ファイルを読めませんでした（${skipped.length} 個）。` : 'ファイルがありません。', true);
       return;
     }
     // zip 1 つならそのまま。ほかはまとめる
     if (files.length === 1 && /\.zip$/i.test(files[0].path)) {
-      current = { blob: files[0].file, name: files[0].path, packed: false };
+      current = { blob: files[0].file, name: files[0].path, packed: false, skipped };
     } else {
       show('ファイルをまとめています…');
       const { buildZip } = await import('/static/precheck.js');
       const entries = [];
       for (const { path, file } of files) {
         if (/\.zip$/i.test(path)) {
+          // zip は 1 つずつ確かめる（中の zip は SRC も読まない）
+          skipped.push(path);
           continue;
         }
         // 検査に要るのは .eve と .txt の中身だけ。ほかは名前だけ（素材があるかを確かめるため）
@@ -93,12 +130,13 @@
         show('zip は 1 つずつ選んでください。', true);
         return;
       }
-      current = { blob: buildZip(entries), name: files.length === 1 ? files[0].path : `${entries.length} 個のファイル`, packed: true };
+      const name = folder ? `フォルダ「${folder}」` : entries.length === 1 ? entries[0].name : `${entries.length} 個のファイル`;
+      current = { blob: buildZip(entries), name, packed: true, skipped };
     }
     check(current);
   }
 
-  async function check({ blob, name, packed }) {
+  async function check({ blob, name, packed, skipped }) {
     running = true;
     recheck.hidden = true;
     summary.hidden = true;
@@ -120,8 +158,14 @@
         ['対象', name],
         ['中身', `${kinds[s.kind]}・ファイル ${s.files} 個（.eve ${s.eves} 個・データ ${s.dataFiles.length} 個）`],
       ];
+      if (skipped.length) {
+        rows.push(['飛ばしたもの', `${skipped.length} 個（一緒に渡した zip・読めないファイル）: ${skipped.slice(0, 5).join('、')}${skipped.length > 5 ? ' ほか' : ''}`]);
+      }
       if (!packed) {
         rows.push(['投稿', s.uploadable ? 'この zip はそのまま投稿できます' : `このままでは投稿できません: ${s.uploadReason}`]);
+      } else {
+        // フォルダ・ファイルは名前で分かる規則（実行ファイル・パス・.eve の有無）だけ。大きさと圧縮率は zip にしてから決まる
+        rows.push(['投稿', s.uploadable ? 'zip にすれば投稿できます（大きさは zip にしてから確かめます）' : `zip にしても投稿できません: ${s.uploadReason}`]);
       }
       if (s.kind === 'other') {
         showSummary(rows);
