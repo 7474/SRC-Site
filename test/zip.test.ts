@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { crc32 } from 'node:zlib';
-import { inspect, readEntries, type RangeReader } from '../src/lib/zip';
+import { extractEntry, inspect, readEntries, type RangeReader } from '../src/lib/zip';
 
 // 無圧縮の zip を作る（テスト用）
 function makeZip(files: { name: string | Uint8Array; data: Uint8Array; utf8?: boolean; flags?: number; size?: number }[]): Uint8Array {
@@ -113,5 +113,17 @@ describe('inspect', () => {
   it('暗号化・zip 爆弾は弾く', () => {
     expect(inspect(entries(['a.eve'], { encrypted: true }))).toMatchObject({ ok: false });
     expect(inspect(entries(['a.eve'], { size: 500 * 1024 * 1024, compressedSize: 1024 }))).toMatchObject({ ok: false, reason: expect.stringContaining('圧縮率') });
+  });
+});
+
+describe('extractEntry', () => {
+  it('取り出す（ローカルヘッダの位置と方式を目次から読む）', async () => {
+    const text = (s: string) => new TextEncoder().encode(s);
+    const r = reader(makeZip([{ name: 'a/System/sp.txt', data: text('集中') }, { name: 'a/Bitmap/x.bmp', data: text('BM') }]));
+    const entries = await readEntries(r);
+    expect(entries.map(e => [e.name, e.method])).toEqual([['a/System/sp.txt', 0], ['a/Bitmap/x.bmp', 0]]);
+    expect(entries[1].offset).toBeGreaterThan(0);
+    expect(new TextDecoder().decode(await extractEntry(r, entries[0]))).toBe('集中');
+    expect(new TextDecoder().decode(await extractEntry(r, entries[1]))).toBe('BM');
   });
 });
