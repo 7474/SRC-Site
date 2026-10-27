@@ -16,6 +16,23 @@ export function CheckPage(props: { packs: CheckPack[] }) {
             <label class="button">フォルダを選ぶ<input type="file" name="folder" webkitdirectory multiple hidden /></label>
           </div>
         </div>
+        <section class="deps" aria-labelledby="deps-title">
+          <h2 id="deps-title">依存データ（手元の SRC 本体・データパック）</h2>
+          <p class="muted">シナリオが手元の SRC 本体の System（独自のスペシャルパワーなど）や、GSC データパックなどを使うときは、そのフォルダか zip をここに足してください。System の .txt と Lib の .eve の中身と、ほかのファイルの名前だけを、このブラウザに覚えておきます（サーバには送りません）。</p>
+          <div class="dropzone deps-zone" tabindex={0}>
+            <p>SRC 本体・データパックのフォルダか zip をここにドロップ</p>
+            <div class="actions">
+              <label class="button">フォルダを足す<input type="file" name="depFolder" webkitdirectory multiple hidden /></label>
+              <label class="button">zip を足す<input type="file" name="depFile" accept=".zip" multiple hidden /></label>
+            </div>
+          </div>
+          <p class="deps-status" aria-live="polite"></p>
+          <ul class="dep-list"></ul>
+          <div class="web-assets" hidden>
+            <p class="muted">SRC#Web（遊ぶ）に追加した素材も、依存データとして使えます。</p>
+            <ul class="dep-list web-asset-list"></ul>
+          </div>
+        </section>
         <details class="check-options">
           <summary>確かめ方</summary>
           <fieldset>
@@ -31,6 +48,7 @@ export function CheckPage(props: { packs: CheckPack[] }) {
         <p class="status" aria-live="polite"></p>
         <button type="button" class="lint-cancel" hidden>確かめるのをやめる</button>
         <dl class="check-summary" hidden></dl>
+        <div class="notice info check-hint" hidden></div>
         <div class="lint" hidden></div>
       </form>
       <h2>確かめること</h2>

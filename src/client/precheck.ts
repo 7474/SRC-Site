@@ -1,6 +1,6 @@
 // アップロードの前に、ブラウザで zip の目次を読んで検査する（Worker の検査と同じ規則。src/lib/zip.ts）。
 // scripts/assemble.sh が dist/static/precheck.js に束ねる。public/upload.js が読み込む
-import { inspect, readEntries, ZipError, type RangeReader } from '../lib/zip';
+import { extractEntry, inspect, readEntries, ZipError, type RangeReader } from '../lib/zip';
 
 export function fileReader(file: Blob): RangeReader {
   return {
@@ -133,4 +133,33 @@ export function buildZip(files: { name: string; data: Uint8Array }[]): Blob {
   ev.setUint32(12, centralSize, true);
   ev.setUint32(16, offset, true);
   return new Blob([...parts, ...central, end], { type: 'application/zip' });
+}
+
+/**
+ * 依存データ（SRC 本体・GSC データパックなど）として中身を使うファイルか。
+ * SRCLintWeb が汎用データとして読むもの（System の *.txt と Lib の *.eve）。ほかのファイルは名前だけ使う（素材があるかを確かめるため）
+ */
+export function isDependencyText(name: string): boolean {
+  const n = name.replace(/\\/g, '/');
+  return /(^|\/)System\/[^/]+\.txt$/i.test(n) || /(^|\/)Lib\/.+\.eve$/i.test(n);
+}
+
+/**
+ * 依存データの zip を、要るものだけに縮める（ブラウザに覚えておくため。画像や音の中身は捨て、名前だけ残す）
+ */
+export async function trimArchive(file: Blob): Promise<{ blob: Blob; files: number; texts: number }> {
+  const reader = fileReader(file);
+  const entries = (await readEntries(reader)).filter(e => !e.directory);
+  const out: { name: string; data: Uint8Array }[] = [];
+  let texts = 0;
+  for (const e of entries) {
+    const name = e.name.replace(/\\/g, '/');
+    if (isDependencyText(name) && !e.encrypted) {
+      out.push({ name, data: await extractEntry(reader, e) });
+      texts++;
+    } else {
+      out.push({ name, data: new Uint8Array(0) });
+    }
+  }
+  return { blob: buildZip(out), files: out.length, texts };
 }

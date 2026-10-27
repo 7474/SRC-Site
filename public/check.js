@@ -2,13 +2,20 @@
 // 1. zip の目次を調べ、中身の種類（シナリオ・データだけ・どちらでもない）を決める（precheck.js の survey）
 // 2. 種類に合わせて srcsharp lint をかける（lint-ui.js）。結果は投稿の画面と同じ表で出す
 // zip でないもの（フォルダ・ファイル）は、.eve と .txt の中身と、ほかのファイルの名前だけを zip にまとめてから確かめる（素材は名前で探すため）。
-// フォルダは、フォルダの名前を最上位に置いてまとめるので、そのフォルダを zip にしたもの（解凍したもの）と同じに確かめる
+// フォルダは、フォルダの名前を最上位に置いてまとめるので、そのフォルダを zip にしたもの（解凍したもの）と同じに確かめる。
+// 依存データ（手元の SRC 本体・GSC データパックなど）は、要るもの（System の .txt・Lib の .eve と、ほかの名前）だけにしてブラウザの IndexedDB に覚え、汎用データとして重ねる
 (() => {
   const form = document.getElementById('check');
   if (!form) {
     return;
   }
-  const zone = form.querySelector('.dropzone');
+  const zone = form.querySelector('.dropzone:not(.deps-zone)');
+  const depsZone = form.querySelector('.deps-zone');
+  const depsStatus = form.querySelector('.deps-status');
+  const depList = form.querySelector('.dep-list:not(.web-asset-list)');
+  const webAssets = form.querySelector('.web-assets');
+  const webAssetList = form.querySelector('.web-asset-list');
+  const hint = form.querySelector('.check-hint');
   const status = form.querySelector('.status');
   const progress = form.querySelector('progress');
   const cancel = form.querySelector('.lint-cancel');
@@ -24,45 +31,94 @@
   let running = false;
   // .git などの隠しフォルダは見ない（SRC は使わず、ファイルが多いことがある）
   const HIDDEN = /(^|\/)\.[^/]+\//;
+  const precheck = () => import('/static/precheck.js');
 
+  // ---- 確かめ方（パック・素材）は次に開いたときも使う（保存できなくても既定のまま使える） ----
+  const OPTIONS_KEY = 'check.options';
+  try {
+    const saved = JSON.parse(localStorage.getItem(OPTIONS_KEY) || 'null');
+    if (saved) {
+      for (const input of form.querySelectorAll('input[name=pack]')) {
+        if (saved.packs && input.value in saved.packs) {
+          input.checked = saved.packs[input.value];
+        }
+      }
+      if (typeof saved.assets === 'boolean') {
+        form.assets.checked = saved.assets;
+      }
+    }
+  } catch {}
+  form.querySelector('.check-options').addEventListener('change', () => {
+    try {
+      const chosen = Object.fromEntries([...form.querySelectorAll('input[name=pack]')].map(i => [i.value, i.checked]));
+      localStorage.setItem(OPTIONS_KEY, JSON.stringify({ packs: chosen, assets: form.assets.checked }));
+    } catch {}
+  });
+
+  // ---- 確かめるもの ----
   form.file.addEventListener('change', () => fromFiles([...form.file.files].map(f => ({ path: f.name, file: f }))));
-  form.folder.addEventListener('change', () => fromFiles(
-    [...form.folder.files].map(f => ({ path: f.webkitRelativePath || f.name, file: f })).filter(f => !HIDDEN.test(f.path)),
-    [],
-    folderName([...form.folder.files].map(f => f.webkitRelativePath || f.name)),
-  ));
+  form.folder.addEventListener('change', () => fromFiles(...fromPicker(form.folder.files)));
   recheck.addEventListener('click', () => current && check(current));
+  onDrop(zone, ({ files, skipped, folder }) => fromFiles(files, skipped, folder));
 
-  // ドロップ（フォルダは中をたどる）
-  for (const type of ['dragenter', 'dragover']) {
-    zone.addEventListener(type, e => {
+  // ---- 依存データ ----
+  form.depFolder.addEventListener('change', () => addDependency(...fromPicker(form.depFolder.files)));
+  form.depFile.addEventListener('change', async () => {
+    for (const f of [...form.depFile.files]) {
+      await addDependency([{ path: f.name, file: f }], [], null);
+    }
+  });
+  onDrop(depsZone, async ({ files, skipped, folder }) => {
+    const zips = files.filter(f => /\.zip$/i.test(f.path));
+    if (zips.length === files.length) {
+      for (const z of zips) {
+        await addDependency([z], [], null);
+      }
+    } else {
+      await addDependency(files.filter(f => !/\.zip$/i.test(f.path)), skipped, folder);
+    }
+  });
+  renderDependencies();
+  renderWebAssets();
+
+  // 「フォルダを選ぶ」で選んだファイル。フォルダを 1 つ選んだなら、その名前も返す
+  function fromPicker(fileList) {
+    const files = [...fileList].map(f => ({ path: f.webkitRelativePath || f.name, file: f })).filter(f => !HIDDEN.test(f.path));
+    const tops = new Set(files.map(f => f.path.split('/')[0]));
+    const folder = tops.size === 1 && files.some(f => f.path.includes('/')) ? [...tops][0] : null;
+    return [files, [], folder];
+  }
+
+  // ドロップを受け付ける（フォルダは中をたどる）。handler には { files, skipped, folder } を渡す
+  function onDrop(target, handler) {
+    for (const type of ['dragenter', 'dragover']) {
+      target.addEventListener(type, e => {
+        e.preventDefault();
+        target.classList.add('over');
+      });
+    }
+    target.addEventListener('dragleave', e => {
+      if (!target.contains(e.relatedTarget)) {
+        target.classList.remove('over');
+      }
+    });
+    target.addEventListener('drop', async e => {
       e.preventDefault();
-      zone.classList.add('over');
+      target.classList.remove('over');
+      const entries = [...e.dataTransfer.items].map(i => i.webkitGetAsEntry?.()).filter(Boolean);
+      if (!entries.length) {
+        handler({ files: [...e.dataTransfer.files].map(f => ({ path: f.name, file: f })), skipped: [], folder: null });
+        return;
+      }
+      const files = [];
+      const skipped = [];
+      for (const entry of entries) {
+        await walk(entry, '', files, skipped);
+      }
+      // フォルダを 1 つだけドロップしたときは、そのフォルダを zip にしたものと同じに扱う
+      handler({ files, skipped, folder: entries.length === 1 && entries[0].isDirectory ? entries[0].name : null });
     });
   }
-  zone.addEventListener('dragleave', e => {
-    if (!zone.contains(e.relatedTarget)) {
-      zone.classList.remove('over');
-    }
-  });
-  zone.addEventListener('drop', async e => {
-    e.preventDefault();
-    zone.classList.remove('over');
-    const entries = [...e.dataTransfer.items].map(i => i.webkitGetAsEntry?.()).filter(Boolean);
-    if (!entries.length) {
-      fromFiles([...e.dataTransfer.files].map(f => ({ path: f.name, file: f })));
-      return;
-    }
-    show('フォルダを読んでいます…');
-    const files = [];
-    const skipped = [];
-    for (const entry of entries) {
-      await walk(entry, '', files, skipped);
-    }
-    // フォルダを 1 つだけドロップしたときは、そのフォルダを zip にしたものと同じに扱う
-    const single = entries.length === 1 && entries[0].isDirectory ? entries[0].name : null;
-    fromFiles(files, skipped, single);
-  });
 
   // ドロップしたフォルダをたどる。読めないもの（名前の文字など）は飛ばして skipped に入れる
   async function walk(entry, prefix, out, skipped) {
@@ -94,10 +150,15 @@
     }
   }
 
-  // 「フォルダを選ぶ」で選んだフォルダの名前（webkitRelativePath の最初の部分）
-  function folderName(paths) {
-    const tops = new Set(paths.map(p => p.split('/')[0]));
-    return tops.size === 1 && paths.some(p => p.includes('/')) ? [...tops][0] : null;
+  // フォルダ・ファイルを zip にまとめる。keep(path) が真のものだけ中身を入れ、ほかは名前だけ
+  async function pack(files, keep) {
+    const { buildZip } = await precheck();
+    const entries = [];
+    for (const { path, file } of files) {
+      const data = keep(path) ? new Uint8Array(await file.arrayBuffer()) : new Uint8Array(0);
+      entries.push({ name: path.replace(/\\/g, '/'), data });
+    }
+    return { blob: buildZip(entries), count: entries.length };
   }
 
   /** files: [{ path, file }]、skipped: 読めなかったもの、folder: フォルダを 1 つ選んだならその名前 */
@@ -114,38 +175,193 @@
       current = { blob: files[0].file, name: files[0].path, packed: false, skipped };
     } else {
       show('ファイルをまとめています…');
-      const { buildZip } = await import('/static/precheck.js');
-      const entries = [];
-      for (const { path, file } of files) {
-        if (/\.zip$/i.test(path)) {
-          // zip は 1 つずつ確かめる（中の zip は SRC も読まない）
-          skipped.push(path);
-          continue;
-        }
-        // 検査に要るのは .eve と .txt の中身だけ。ほかは名前だけ（素材があるかを確かめるため）
-        const data = /\.(eve|txt)$/i.test(path) ? new Uint8Array(await file.arrayBuffer()) : new Uint8Array(0);
-        entries.push({ name: path.replace(/\\/g, '/'), data });
-      }
-      if (!entries.length) {
+      // zip は 1 つずつ確かめる
+      const loose = files.filter(f => !/\.zip$/i.test(f.path));
+      skipped = [...skipped, ...files.filter(f => /\.zip$/i.test(f.path)).map(f => f.path)];
+      if (!loose.length) {
         show('zip は 1 つずつ選んでください。', true);
         return;
       }
-      const name = folder ? `フォルダ「${folder}」` : entries.length === 1 ? entries[0].name : `${entries.length} 個のファイル`;
-      current = { blob: buildZip(entries), name, packed: true, skipped };
+      // 検査に要るのは .eve と .txt の中身だけ。ほかは名前だけ（素材があるかを確かめるため）
+      const { blob, count } = await pack(loose, path => /\.(eve|txt)$/i.test(path));
+      const name = folder ? `フォルダ「${folder}」` : count === 1 ? loose[0].path : `${count} 個のファイル`;
+      current = { blob, name, packed: true, skipped };
     }
     check(current);
   }
 
+  // ---- 依存データの保存（IndexedDB。このサイトのチェッカーだけが使う） ----
+  function openDb() {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open('srcsite-check', 1);
+      request.onupgradeneeded = () => request.result.createObjectStore('deps', { keyPath: 'id', autoIncrement: true });
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+  async function store(mode, action) {
+    const db = await openDb();
+    try {
+      return await new Promise((resolve, reject) => {
+        const tx = db.transaction('deps', mode);
+        const request = action(tx.objectStore('deps'));
+        tx.oncomplete = () => resolve(request.result);
+        tx.onerror = () => reject(tx.error);
+      });
+    } finally {
+      db.close();
+    }
+  }
+  function listDependencies() {
+    return store('readonly', s => s.getAll()).catch(() => []);
+  }
+
+  async function addDependency(files, skipped, folder) {
+    if (!files.length) {
+      depsStatus.textContent = skipped.length ? `ファイルを読めませんでした（${skipped.length} 個）。` : 'ファイルがありません。';
+      return;
+    }
+    depsStatus.textContent = '依存データを読んでいます…';
+    try {
+      const { isDependencyText, trimArchive } = await precheck();
+      let item;
+      if (files.length === 1 && /\.zip$/i.test(files[0].path)) {
+        const trimmed = await trimArchive(files[0].file);
+        item = { name: files[0].path, blob: trimmed.blob, files: trimmed.files, texts: trimmed.texts };
+      } else {
+        const texts = files.filter(f => isDependencyText(f.path)).length;
+        const { blob, count } = await pack(files, isDependencyText);
+        item = { name: folder ? `フォルダ「${folder}」` : `${count} 個のファイル`, blob, files: count, texts };
+      }
+      if (!item.texts) {
+        depsStatus.textContent = `${item.name} には System の .txt も Lib の .eve もありません（素材の名前だけを使います）。`;
+      } else {
+        depsStatus.textContent = `${item.name} を足しました（System・Lib のファイル ${item.texts} 個）。`;
+      }
+      await store('readwrite', s => s.add({ ...item, enabled: true, added: Date.now() }));
+    } catch (err) {
+      depsStatus.textContent = `依存データを足せませんでした: ${err.message ?? err}`;
+    }
+    renderDependencies();
+  }
+
+  async function renderDependencies() {
+    const items = await listDependencies();
+    depList.replaceChildren(...items.map(item => {
+      const li = document.createElement('li');
+      const label = li.appendChild(document.createElement('label'));
+      label.className = 'check';
+      const box = label.appendChild(document.createElement('input'));
+      box.type = 'checkbox';
+      box.checked = item.enabled;
+      box.addEventListener('change', () => store('readwrite', s => s.put({ ...item, enabled: box.checked })));
+      label.append(` ${item.name}`);
+      const meta = li.appendChild(document.createElement('span'));
+      meta.className = 'muted';
+      meta.textContent = `System・Lib ${item.texts} 個・ファイル ${item.files} 個`;
+      const remove = li.appendChild(document.createElement('button'));
+      remove.type = 'button';
+      remove.className = 'link';
+      remove.textContent = '外す';
+      remove.addEventListener('click', async () => {
+        await store('readwrite', s => s.delete(item.id));
+        renderDependencies();
+      });
+      return li;
+    }));
+  }
+
+  // ---- SRC#Web（/play/）に追加した素材（IndexedDB srcweb の archives。kind が asset のもの） ----
+  // 読むだけ。SRC#Web がまだデータベースを作っていなければ開かない（ここで作ると、SRC#Web の初期化が壊れる）
+  const WEB_ASSETS_KEY = 'check.webAssets';
+  async function listWebAssets() {
+    try {
+      if (!indexedDB.databases || !(await indexedDB.databases()).some(d => d.name === 'srcweb')) {
+        return [];
+      }
+      const db = await new Promise((resolve, reject) => {
+        const request = indexedDB.open('srcweb');
+        request.onupgradeneeded = () => request.transaction.abort();
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      try {
+        if (!db.objectStoreNames.contains('archives')) {
+          return [];
+        }
+        const items = await new Promise((resolve, reject) => {
+          const request = db.transaction('archives', 'readonly').objectStore('archives').getAll();
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+        });
+        let enabled = {};
+        try {
+          enabled = JSON.parse(localStorage.getItem(WEB_ASSETS_KEY) || '{}');
+        } catch {}
+        return items.filter(x => x.kind === 'asset' && x.data).map(x => ({ name: x.name, blob: x.data, size: x.size, enabled: enabled[x.name] !== false }));
+      } finally {
+        db.close();
+      }
+    } catch {
+      return [];
+    }
+  }
+
+  async function renderWebAssets() {
+    const items = await listWebAssets();
+    webAssets.hidden = items.length === 0;
+    webAssetList.replaceChildren(...items.map(item => {
+      const li = document.createElement('li');
+      const label = li.appendChild(document.createElement('label'));
+      label.className = 'check';
+      const box = label.appendChild(document.createElement('input'));
+      box.type = 'checkbox';
+      box.checked = item.enabled;
+      box.addEventListener('change', () => {
+        try {
+          const enabled = JSON.parse(localStorage.getItem(WEB_ASSETS_KEY) || '{}');
+          enabled[item.name] = box.checked;
+          localStorage.setItem(WEB_ASSETS_KEY, JSON.stringify(enabled));
+        } catch {}
+      });
+      label.append(` ${item.name}`);
+      const meta = li.appendChild(document.createElement('span'));
+      meta.className = 'muted';
+      meta.textContent = `SRC#Web の素材・${(item.size / 1024 / 1024).toFixed(1)} MB`;
+      return li;
+    }));
+  }
+
+  // 汎用データが足りないと出る問題をまとめて、依存データを足すよう案内する
+  function showHint(found) {
+    const groups = SrcLint.unresolved(found);
+    if (!groups.length) {
+      hint.hidden = true;
+      return;
+    }
+    const list = document.createElement('ul');
+    for (const g of groups) {
+      const names = g.names.slice(0, 8).join('、') + (g.names.length > 8 ? ` ほか ${g.names.length - 8} 種` : '');
+      list.appendChild(document.createElement('li')).textContent = `見つからない${g.kind}：${names}（${g.count} 件）`;
+    }
+    const text = document.createElement('p');
+    text.textContent = '手元の SRC 本体の System や、データパック・汎用戦闘アニメにあるものなら、上の「依存データ」に足すと解決します。';
+    hint.replaceChildren(list, text);
+    hint.hidden = false;
+  }
+
+  // ---- 確かめる ----
   async function check({ blob, name, packed, skipped }) {
     running = true;
     recheck.hidden = true;
     summary.hidden = true;
     lintBox.hidden = true;
+    hint.hidden = true;
     progress.hidden = false;
     progress.value = 0;
     try {
       show('zip の中身を調べています…');
-      const { survey } = await import('/static/precheck.js');
+      const { survey } = await precheck();
       let s;
       try {
         s = await survey(blob);
@@ -172,8 +388,17 @@
         show('SRC のデータ（robot.txt・pilot.txt など）もイベント（.eve）も見つかりませんでした。', true);
         return;
       }
-      const systemArchives = packs.filter(p => [...form.querySelectorAll('input[name=pack]:checked')].some(c => c.value === p.id)).map(p => p.url);
-      const found = await SrcLint.run(blob, { systemArchives, assets: form.assets.checked, show, progress, cancel });
+      const chosenPacks = packs.filter(p => [...form.querySelectorAll('input[name=pack]:checked')].some(c => c.value === p.id));
+      const deps = [...(await listDependencies()), ...(await listWebAssets())].filter(d => d.enabled);
+      const used = [...chosenPacks.map(p => p.title), ...deps.map(d => d.name)];
+      rows.push(['汎用データ', used.length ? used.join('、') : 'なし']);
+      const found = await SrcLint.run(blob, {
+        systemArchives: [...chosenPacks.map(p => p.url), ...deps.map(d => d.blob)],
+        assets: form.assets.checked,
+        show,
+        progress,
+        cancel,
+      });
       if (!found) {
         showSummary(rows);
         show('確かめるのをやめました。');
@@ -181,6 +406,7 @@
       }
       rows.push(['結果', found.length ? SrcLint.summarize(found) : '問題は見つかりませんでした']);
       showSummary(rows);
+      showHint(found);
       if (found.length) {
         SrcLint.renderTable(lintBox, found);
       }

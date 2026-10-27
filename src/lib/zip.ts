@@ -12,6 +12,10 @@ export type ZipEntry = {
   size: number;
   encrypted: boolean;
   directory: boolean;
+  /** 圧縮の方式（0: 無圧縮、8: deflate） */
+  method: number;
+  /** ローカルヘッダの位置 */
+  offset: number;
 };
 
 const EOCD_SIG = 0x06054b50;
@@ -111,6 +115,8 @@ export async function readEntries(reader: RangeReader, maxEntries = 200_000): Pr
       throw new ZipError('目次が壊れています');
     }
     const flags = u16(cd, p + 8);
+    const method = u16(cd, p + 10);
+    let offset = u32(cd, p + 42);
     let compressedSize = u32(cd, p + 20);
     let size = u32(cd, p + 24);
     const nameLength = u16(cd, p + 28);
@@ -119,7 +125,7 @@ export async function readEntries(reader: RangeReader, maxEntries = 200_000): Pr
     const nameBytes = cd.subarray(p + 46, p + 46 + nameLength);
     const extra = cd.subarray(p + 46 + nameLength, p + 46 + nameLength + extraLength);
     // Zip64 の拡張フィールド（大きさが 0xffffffff のとき）
-    if (size === 0xffffffff || compressedSize === 0xffffffff) {
+    if (size === 0xffffffff || compressedSize === 0xffffffff || offset === 0xffffffff) {
       for (let e = 0; e + 4 <= extra.length;) {
         const id = u16(extra, e);
         const len = u16(extra, e + 2);
@@ -131,6 +137,10 @@ export async function readEntries(reader: RangeReader, maxEntries = 200_000): Pr
           }
           if (compressedSize === 0xffffffff) {
             compressedSize = u64(extra, q);
+            q += 8;
+          }
+          if (offset === 0xffffffff) {
+            offset = u64(extra, q);
           }
           break;
         }
@@ -144,6 +154,8 @@ export async function readEntries(reader: RangeReader, maxEntries = 200_000): Pr
       size,
       encrypted: (flags & 0x0001) !== 0,
       directory: name.endsWith('/') || name.endsWith('\\'),
+      method,
+      offset,
     });
     p += 46 + nameLength + extraLength + commentLength;
   }
@@ -220,6 +232,26 @@ export function inspect(entries: ZipEntry[]): Inspection {
       roots: [...tops].filter(t => t).slice(0, 20),
     },
   };
+}
+
+/** 項目の中身を取り出す（無圧縮か deflate。DecompressionStream を使う） */
+export async function extractEntry(reader: RangeReader, e: ZipEntry): Promise<Uint8Array> {
+  if (e.encrypted) {
+    throw new ZipError(`暗号化されています: ${e.name}`);
+  }
+  const local = await reader.read(e.offset, 30);
+  if (u32(local, 0) !== 0x04034b50) {
+    throw new ZipError(`zip が壊れています: ${e.name}`);
+  }
+  const data = await reader.read(e.offset + 30 + u16(local, 26) + u16(local, 28), e.compressedSize);
+  if (e.method === 0) {
+    return data;
+  }
+  if (e.method === 8) {
+    const stream = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+  }
+  throw new ZipError(`対応していない圧縮方式です（${e.method}）: ${e.name}`);
 }
 
 /** R2 のオブジェクトを読む RangeReader */

@@ -165,3 +165,13 @@ dl dd { margin-left: 0; }
 .lint tr.sev-error td:nth-child(3) { color: var(--error); font-weight: 600; }
 /* 投稿の状態。lint の進み具合は 2 行目に扱っているファイルを出す */
 #upload .status { white-space: pre-line; overflow-wrap: anywhere; }
+/* チェッカーの依存データ */
+.deps h2 { margin-top: 16px; }
+.deps-zone { padding: 10px 16px; }
+.deps-zone p { margin: 4px 0; }
+.dep-list { list-style: none; padding: 0; margin: 8px 0; }
+.dep-list li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; padding: 6px 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; margin-bottom: 6px; }
+.dep-list .muted { font-size: 13px; }
+.dep-list button { margin-left: auto; }
+.check-hint ul { margin: 4px 0; padding-left: 20px; }
+.check-hint p { margin: 4px 0; }
