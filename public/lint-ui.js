@@ -118,5 +118,22 @@
       .join('・');
   }
 
-  window.SrcLint = { run, renderTable, summarize };
+  /**
+   * 汎用データ（依存データ）が足りないと出る問題を、種類ごとに名前をまとめる。
+   * スペシャルパワー（データの参照）、Call・Goto の飛び先のラベル、include するファイル（汎用戦闘アニメなどの Lib にあることが多い）
+   * @returns {{ kind: string, names: string[], count: number }[]}
+   */
+  function unresolved(found) {
+    const kinds = [
+      { kind: 'スペシャルパワー', pattern: /^(.+)というスペシャルパワーは存在しません/ },
+      { kind: 'ラベル', pattern: /^ラベル「(.+)」が見つかりません/ },
+      { kind: 'include するファイル', pattern: /^include するファイル「(.+)」が見つかりません/ },
+    ];
+    return kinds.map(({ kind, pattern }) => {
+      const hits = found.map(d => d.message.match(pattern)).filter(Boolean);
+      return { kind, names: [...new Set(hits.map(m => m[1]))], count: hits.length };
+    }).filter(g => g.count > 0);
+  }
+
+  window.SrcLint = { run, renderTable, summarize, unresolved };
 })();

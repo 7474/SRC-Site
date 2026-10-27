@@ -28,6 +28,10 @@ export function CheckPage(props: { packs: CheckPack[] }) {
           </div>
           <p class="deps-status" aria-live="polite"></p>
           <ul class="dep-list"></ul>
+          <div class="web-assets" hidden>
+            <p class="muted">SRC#Web（遊ぶ）に追加した素材も、依存データとして使えます。</p>
+            <ul class="dep-list web-asset-list"></ul>
+          </div>
         </section>
         <details class="check-options">
           <summary>確かめ方</summary>
@@ -44,6 +48,7 @@ export function CheckPage(props: { packs: CheckPack[] }) {
         <p class="status" aria-live="polite"></p>
         <button type="button" class="lint-cancel" hidden>確かめるのをやめる</button>
         <dl class="check-summary" hidden></dl>
+        <div class="notice info check-hint" hidden></div>
         <div class="lint" hidden></div>
       </form>
       <h2>確かめること</h2>

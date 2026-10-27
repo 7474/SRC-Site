@@ -173,3 +173,5 @@ dl dd { margin-left: 0; }
 .dep-list li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; padding: 6px 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; margin-bottom: 6px; }
 .dep-list .muted { font-size: 13px; }
 .dep-list button { margin-left: auto; }
+.check-hint ul { margin: 4px 0; padding-left: 20px; }
+.check-hint p { margin: 4px 0; }

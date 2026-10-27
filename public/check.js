@@ -12,7 +12,10 @@
   const zone = form.querySelector('.dropzone:not(.deps-zone)');
   const depsZone = form.querySelector('.deps-zone');
   const depsStatus = form.querySelector('.deps-status');
-  const depList = form.querySelector('.dep-list');
+  const depList = form.querySelector('.dep-list:not(.web-asset-list)');
+  const webAssets = form.querySelector('.web-assets');
+  const webAssetList = form.querySelector('.web-asset-list');
+  const hint = form.querySelector('.check-hint');
   const status = form.querySelector('.status');
   const progress = form.querySelector('progress');
   const cancel = form.querySelector('.lint-cancel');
@@ -76,6 +79,7 @@
     }
   });
   renderDependencies();
+  renderWebAssets();
 
   // 「フォルダを選ぶ」で選んだファイル。フォルダを 1 つ選んだなら、その名前も返す
   function fromPicker(fileList) {
@@ -267,12 +271,92 @@
     }));
   }
 
+  // ---- SRC#Web（/play/）に追加した素材（IndexedDB srcweb の archives。kind が asset のもの） ----
+  // 読むだけ。SRC#Web がまだデータベースを作っていなければ開かない（ここで作ると、SRC#Web の初期化が壊れる）
+  const WEB_ASSETS_KEY = 'check.webAssets';
+  async function listWebAssets() {
+    try {
+      if (!indexedDB.databases || !(await indexedDB.databases()).some(d => d.name === 'srcweb')) {
+        return [];
+      }
+      const db = await new Promise((resolve, reject) => {
+        const request = indexedDB.open('srcweb');
+        request.onupgradeneeded = () => request.transaction.abort();
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      try {
+        if (!db.objectStoreNames.contains('archives')) {
+          return [];
+        }
+        const items = await new Promise((resolve, reject) => {
+          const request = db.transaction('archives', 'readonly').objectStore('archives').getAll();
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+        });
+        let enabled = {};
+        try {
+          enabled = JSON.parse(localStorage.getItem(WEB_ASSETS_KEY) || '{}');
+        } catch {}
+        return items.filter(x => x.kind === 'asset' && x.data).map(x => ({ name: x.name, blob: x.data, size: x.size, enabled: enabled[x.name] !== false }));
+      } finally {
+        db.close();
+      }
+    } catch {
+      return [];
+    }
+  }
+
+  async function renderWebAssets() {
+    const items = await listWebAssets();
+    webAssets.hidden = items.length === 0;
+    webAssetList.replaceChildren(...items.map(item => {
+      const li = document.createElement('li');
+      const label = li.appendChild(document.createElement('label'));
+      label.className = 'check';
+      const box = label.appendChild(document.createElement('input'));
+      box.type = 'checkbox';
+      box.checked = item.enabled;
+      box.addEventListener('change', () => {
+        try {
+          const enabled = JSON.parse(localStorage.getItem(WEB_ASSETS_KEY) || '{}');
+          enabled[item.name] = box.checked;
+          localStorage.setItem(WEB_ASSETS_KEY, JSON.stringify(enabled));
+        } catch {}
+      });
+      label.append(` ${item.name}`);
+      const meta = li.appendChild(document.createElement('span'));
+      meta.className = 'muted';
+      meta.textContent = `SRC#Web の素材・${(item.size / 1024 / 1024).toFixed(1)} MB`;
+      return li;
+    }));
+  }
+
+  // 汎用データが足りないと出る問題をまとめて、依存データを足すよう案内する
+  function showHint(found) {
+    const groups = SrcLint.unresolved(found);
+    if (!groups.length) {
+      hint.hidden = true;
+      return;
+    }
+    const list = document.createElement('ul');
+    for (const g of groups) {
+      const names = g.names.slice(0, 8).join('、') + (g.names.length > 8 ? ` ほか ${g.names.length - 8} 種` : '');
+      list.appendChild(document.createElement('li')).textContent = `見つからない${g.kind}：${names}（${g.count} 件）`;
+    }
+    const text = document.createElement('p');
+    text.textContent = '手元の SRC 本体の System や、データパック・汎用戦闘アニメにあるものなら、上の「依存データ」に足すと解決します。';
+    hint.replaceChildren(list, text);
+    hint.hidden = false;
+  }
+
   // ---- 確かめる ----
   async function check({ blob, name, packed, skipped }) {
     running = true;
     recheck.hidden = true;
     summary.hidden = true;
     lintBox.hidden = true;
+    hint.hidden = true;
     progress.hidden = false;
     progress.value = 0;
     try {
@@ -305,7 +389,7 @@
         return;
       }
       const chosenPacks = packs.filter(p => [...form.querySelectorAll('input[name=pack]:checked')].some(c => c.value === p.id));
-      const deps = (await listDependencies()).filter(d => d.enabled);
+      const deps = [...(await listDependencies()), ...(await listWebAssets())].filter(d => d.enabled);
       const used = [...chosenPacks.map(p => p.title), ...deps.map(d => d.name)];
       rows.push(['汎用データ', used.length ? used.join('、') : 'なし']);
       const found = await SrcLint.run(blob, {
@@ -322,6 +406,7 @@
       }
       rows.push(['結果', found.length ? SrcLint.summarize(found) : '問題は見つかりませんでした']);
       showSummary(rows);
+      showHint(found);
       if (found.length) {
         SrcLint.renderTable(lintBox, found);
       }
