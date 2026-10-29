@@ -9,7 +9,12 @@ import { visibleSubmission } from './files';
 
 export const viewer = new Hono<AppEnv>();
 
-/** データビューアのアーカイブの一覧の 1 項目（形は 7474/SRC の docs/gui/dataviewer.md） */
+/**
+ * データビューアのアーカイブの一覧の 1 項目（形は 7474/SRC の docs/gui/dataviewer.md）。
+ * シナリオとパックは同じ ID を持てるので、一覧の ID は種類を前に付ける（scenarios/<slug>・packs/<id>）
+ */
+export const viewerId = (type: 'scenarios' | 'packs', id: string) => `${type}/${id}`;
+
 export type ViewerArchive = {
   id: string;
   kind: 'scenario' | 'pack' | 'resource';
@@ -37,16 +42,16 @@ viewer.get('/index.json', async c => {
   const archives: ViewerArchive[] = [];
   for (const s of scenarios.results as PlayableRow[]) {
     archives.push({
-      id: s.slug, kind: 'scenario', title: s.title, ...optional({ author: s.author, description: s.description?.slice(0, 200), license: s.license, root: s.root }),
+      id: viewerId('scenarios', s.slug), kind: 'scenario', title: s.title, ...optional({ author: s.author, description: s.description?.slice(0, 200), license: s.license, root: s.root }),
       page: `/scenarios/${s.slug}`,
       files: `/api/viewer/archives/scenarios/${s.slug}/${s.number}.json`,
       base: `/files/scenarios/${s.slug}/${s.number}/`,
-      requires: resolveRequires(packRows, parseJsonArray(s.requires), parseJsonArray(s.excludes)),
+      requires: resolveRequires(packRows, parseJsonArray(s.requires), parseJsonArray(s.excludes)).map(id => viewerId('packs', id)),
     });
   }
   for (const p of packRows.filter(usablePack)) {
     archives.push({
-      id: p.id, kind: 'pack', title: p.title, ...optional({ description: p.description, license: p.license, root: p.root }),
+      id: viewerId('packs', p.id), kind: 'pack', title: p.title, ...optional({ description: p.description, license: p.license, root: p.root }),
       page: `/packs/${p.id}`,
       files: `/api/viewer/archives/packs/${p.id}/${p.version}.json`,
       base: `/files/packs/${p.id}/${p.version}/`,
@@ -60,7 +65,7 @@ viewer.get('/index.json', async c => {
 /** MIDI を鳴らす SoundFont（.sf2）を探すアーカイブ。アーカイブ自身と重ねるものに .sf2 が無いときに使う */
 function soundFont(packs: PackRow[]): { soundFont?: string } {
   const p = packs.find(x => x.id === SOUND_FONT_PACK && usablePack(x));
-  return p ? { soundFont: p.id } : {};
+  return p ? { soundFont: viewerId('packs', p.id) } : {};
 }
 const SOUND_FONT_PACK = 'soundfont';
 
@@ -83,7 +88,7 @@ viewer.get('/submissions/:id/:file{index\\.json|files\\.json}', async c => {
     page: `/my/submissions/${s.id}`,
     files: `/api/viewer/submissions/${s.id}/files.json`,
     base: `/files/pack-submissions/${s.id}/`,
-    requires: pack && usablePack(pack) ? [pack.id] : [],
+    requires: pack && usablePack(pack) ? [viewerId('packs', pack.id)] : [],
   };
   return c.json({ format: 1, name: c.env.SITE_NAME, ...soundFont(packs), archives: [archive] });
 });

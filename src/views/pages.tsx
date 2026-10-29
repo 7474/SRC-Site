@@ -3,8 +3,8 @@ import { Notice } from './layout';
 import { formatDate, formatSize } from '../lib/util';
 import { resolveRequires, type PackRow } from '../lib/catalog';
 
-// データビューア（/viewer/）でアーカイブを開く URL（7474/SRC の docs/gui/dataviewer.md）
-export const viewerUrl = (id: string) => `/viewer/archive?id=${encodeURIComponent(id)}`;
+// データビューア（/viewer/）でアーカイブを開く URL（7474/SRC の docs/gui/dataviewer.md）。ID は src/routes/viewer.ts の viewerId
+export const viewerUrl = (type: 'scenarios' | 'packs', id: string) => `/viewer/archive?id=${encodeURIComponent(`${type}/${id}`)}`;
 
 export type ListItem = {
   slug: string; title: string; author: string | null; handle: string; updated_at: number;
@@ -93,7 +93,7 @@ export function ScenarioPage(props: {
         <div class="actions">
           {latest && <a class="button primary" href={`/play/?play=${encodeURIComponent(s.slug)}`}>SRC#Web で遊ぶ</a>}
           {latest && <a class="button" href={`/scenarios/${s.slug}/download`}>ダウンロード（{formatSize(latest.size)}）</a>}
-          {latest && s.visibility === 'public' && !s.hidden && <a class="button" href={viewerUrl(s.slug)}>データビューアで見る</a>}
+          {latest && s.visibility === 'public' && !s.hidden && <a class="button" href={viewerUrl('scenarios', s.slug)}>データビューアで見る</a>}
           {props.canEdit && <a class="button" href={`/my/scenarios/${s.slug}`}>編集・新しい版を上げる</a>}
         </div>
       )}

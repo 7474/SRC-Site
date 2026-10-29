@@ -107,16 +107,16 @@ sequenceDiagram
 
 | パス | 内容 | キャッシュ |
 |---|---|---|
-| `GET /api/viewer/index.json` | 公開のシナリオ（`requires` を持つ）と、配っているパックの一覧 | `public, max-age=60` |
+| `GET /api/viewer/index.json` | 公開のシナリオ（`requires` を持つ）と、配っているパックの一覧。シナリオとパックは同じ ID を持てるので、一覧の ID は種類を前に付ける（`scenarios/<slug>`・`packs/<id>`） | `public, max-age=60` |
 | `GET /api/viewer/archives/<scenarios・packs>/<ID>/<版>.json` | zip の中のファイルの一覧（`{ files: [{ path, size }] }`） | 不変（Cache API にも置く） |
 | `GET /files/<scenarios・packs>/<ID>/<版>/<zip の中の道>` | zip の中のファイルを 1 つ取り出して返す。区切りと大文字小文字は区別しない。Range に応じる | 不変（Cache API にも置く） |
 | `GET /api/viewer/submissions/<ID>/index.json`・`…/files.json` | パックへの投稿 1 つだけの一覧（重ねるのは投稿先のパック）と、ファイルの一覧（`pack_files` から作る）。投稿した人とパックの管理者だけ | `private` |
 
-- 一覧の `soundFont` は、MIDI を鳴らす SoundFont（.sf2）を探すパック（`soundfont`）。データビューアは MIDI を MeltySynth で WAV に合成して鳴らす（アーカイブ自身と重ねるパックの .sf2 が先）
+- 一覧の `soundFont` は、MIDI を鳴らす SoundFont（.sf2）を探すパック（`packs/soundfont`）。データビューアは MIDI を MeltySynth で WAV に合成して鳴らす（アーカイブ自身と重ねるパックの .sf2 が先）
 
 - 取り出しは zip の目次を Range で読み、目当ての項目だけを Range で読んで展開する（`src/lib/archives.ts`。展開は `DecompressionStream`）。32 MB を超えるファイルは取り出さない（413）
 - 返す種類は画像（BMP・PNG・JPEG・GIF）と音（WAV・MP3・OGG・MIDI）だけ。ほかは `application/octet-stream` と `Content-Security-Policy: sandbox` で返し、投稿された HTML・SVG を同じオリジンで動かさない
-- ポータルの頁（シナリオ・パック）から「データビューアで見る」で開く（`/viewer/archive?id=<ID>`）
+- ポータルの頁（シナリオ・パック）から「データビューアで見る」で開く（`/viewer/archive?id=scenarios/<slug>`・`/viewer/archive?id=packs/<id>`）
 
 ## 取り下げ
 

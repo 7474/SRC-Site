@@ -72,7 +72,7 @@ export function PackPage(props: {
       {p.description && <p class="pre">{p.description}</p>}
       <div class="actions">
         {p.kind === 'community' && props.canSubmit && <a class="button primary" href={`/my/packs/${p.id}/submit`}>このパックに投稿する</a>}
-        {built && !p.withdrawn && <a class="button" href={viewerUrl(p.id)}>データビューアで見る</a>}
+        {built && !p.withdrawn && <a class="button" href={viewerUrl('packs', p.id)}>データビューアで見る</a>}
         {built && !p.withdrawn && <a class="button" href={`/files/packs/${p.id}/${p.version}.zip`} download={`${p.id}.zip`}>ダウンロード（{formatSize(p.size)}）</a>}
         {props.canManage && <a class="button" href={`/my/packs/${p.id}`}>管理{props.pending > 0 ? `（承認待ち ${props.pending}）` : ''}</a>}
       </div>

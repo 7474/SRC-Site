@@ -265,7 +265,9 @@ assert.equal(catalog.entries.find(e => e.id === packId).archive, `/files/packs/$
 step('シナリオがパックを使う（カタログに 1 つの zip として入る）');
 
 const index = await (await visitor.req('/api/viewer/index.json')).json();
-const archive = index.archives.find(a => a.id === packId);
+const archive = index.archives.find(a => a.id === `packs/${packId}`);
+// シナリオとパックは種類で区別する（同じ ID でもよい）
+assert.deepEqual(index.archives.find(a => a.id === `scenarios/${slug}`).requires, [`packs/${packId}`]);
 const list = await (await visitor.req(archive.files)).json();
 assert.deepEqual(list.files.map(f => f.path).sort(), ['Bitmap/Pilot/スモーク.bmp', 'Sound/smoke.wav']);
 res = await visitor.req(archive.base + encodeURI('bitmap/pilot/スモーク.bmp'));
