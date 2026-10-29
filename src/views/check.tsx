@@ -1,9 +1,8 @@
 // データ・シナリオのチェッカー（/check）。ログインは要らない。ファイルはブラウザの外に出さない（public/check.js）
-// urls はパックの zip（投稿素材のパックは中の素材の zip）
-export type CheckPack = { id: string; title: string; is_default: number; urls: string[] };
+export type CheckPack = { id: string; title: string; is_default: number; version: string };
 
 export function CheckPage(props: { packs: CheckPack[] }) {
-  const packs = props.packs.map(p => ({ id: p.id, title: p.title, urls: p.urls, default: Boolean(p.is_default) }));
+  const packs = props.packs.map(p => ({ id: p.id, title: p.title, url: `/files/packs/${p.id}/${p.version}.zip`, default: Boolean(p.is_default) }));
   return (
     <section>
       <h1>データ・シナリオのチェック</h1>

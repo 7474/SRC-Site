@@ -393,7 +393,7 @@
       const used = [...chosenPacks.map(p => p.title), ...deps.map(d => d.name)];
       rows.push(['汎用データ', used.length ? used.join('、') : 'なし']);
       const found = await SrcLint.run(blob, {
-        systemArchives: [...chosenPacks.flatMap(p => p.urls), ...deps.map(d => d.blob)],
+        systemArchives: [...chosenPacks.map(p => p.url), ...deps.map(d => d.blob)],
         assets: form.assets.checked,
         show,
         progress,

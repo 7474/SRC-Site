@@ -2,7 +2,7 @@
 import { Hono } from 'hono';
 import { withoutPlaceholders, type AppEnv, type Bindings, type InspectMessage } from './env';
 import { loadUser } from './lib/session';
-import { inspectVersion, sweep } from './lib/inspector';
+import { inspectSubmission, inspectVersion, sweep } from './lib/inspector';
 import { serveObject } from './lib/serve';
 import { auth } from './routes/auth';
 import { pages } from './routes/pages';
@@ -10,6 +10,8 @@ import { api } from './routes/api';
 import { files } from './routes/files';
 import { admin } from './routes/admin';
 import { viewer } from './routes/viewer';
+import { packApi } from './routes/packs-api';
+import { packs } from './routes/packs';
 
 const app = new Hono<AppEnv>();
 
@@ -97,7 +99,7 @@ app.use('*', async (c, next) => {
   const user = c.get('user');
   const key = user ? `user:${user.id}` : `ip:${c.req.header('CF-Connecting-IP') ?? 'local'}`;
   // パートのアップロード（1 GB で 32 回）は書き込みの回数に数えない（本人の版に限り、大きさの上限で縛られている）
-  const writing = c.req.method !== 'GET' && c.req.method !== 'HEAD' && !/^\/api\/versions\/\d+\/parts\/\d+$/.test(c.req.path);
+  const writing = c.req.method !== 'GET' && c.req.method !== 'HEAD' && !/^\/api\/(versions|pack-submissions|pack-builds)\/\d+\/parts\/\d+$/.test(c.req.path);
   const limiter = writing ? c.env.WRITE_LIMITER : c.env.API_LIMITER;
   if (limiter && (c.req.path.startsWith('/api/') || writing)) {
     const { success } = await limiter.limit({ key: `${writing ? 'w' : 'r'}:${key}` });
@@ -110,9 +112,11 @@ app.use('*', async (c, next) => {
 
 app.route('/auth', auth);
 app.route('/api/viewer', viewer);
+app.route('/api', packApi);
 app.route('/api', api);
 app.route('/admin', admin);
 app.route('/', files);
+app.route('/', packs);
 app.route('/', pages);
 
 app.onError((err, c) => {
@@ -125,7 +129,11 @@ export default {
   async queue(batch: MessageBatch<InspectMessage>, env: Bindings) {
     env = withoutPlaceholders(env);
     for (const message of batch.messages) {
-      await inspectVersion(env, message.body.versionId);
+      if (message.body.submissionId !== undefined) {
+        await inspectSubmission(env, message.body.submissionId);
+      } else {
+        await inspectVersion(env, message.body.versionId);
+      }
       message.ack();
     }
   },

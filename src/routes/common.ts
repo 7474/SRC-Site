@@ -6,8 +6,6 @@ export type ScenarioRow = {
   id: number; slug: string; owner_id: number; title: string; author: string | null; description: string | null; license: string | null;
   tags: string; visibility: string; hidden: number; hidden_reason: string | null; latest_version: number | null;
   created_at: number; updated_at: number; handle: string;
-  /** 'scenario' | 'resource'（共有パックに投稿した素材） */
-  kind: string; pack_id: string | null;
 };
 
 export async function getScenario(c: Context<AppEnv>, slug: string): Promise<ScenarioRow | null> {
@@ -53,6 +51,6 @@ export const requireAdmin = createMiddleware<AppEnv>(async (c, next) => {
 });
 
 export const LIST_SELECT = `
-  SELECT s.slug, s.kind, s.title, s.author, s.description, s.updated_at, s.visibility, s.hidden, u.handle, v.size,
+  SELECT s.slug, s.title, s.author, s.description, s.updated_at, s.visibility, s.hidden, u.handle, v.size,
          (SELECT SUM(plays + downloads) FROM counters c WHERE c.scenario_id = s.id AND c.day >= date('now', '-7 day')) AS plays
     FROM scenarios s JOIN users u ON u.id = s.owner_id LEFT JOIN versions v ON v.id = s.latest_version`;

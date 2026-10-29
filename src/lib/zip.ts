@@ -16,6 +16,7 @@ export type ZipEntry = {
   method: number;
   /** ローカルヘッダの位置 */
   offset: number;
+  crc32: number;
 };
 
 const EOCD_SIG = 0x06054b50;
@@ -116,6 +117,7 @@ export async function readEntries(reader: RangeReader, maxEntries = 200_000): Pr
     }
     const flags = u16(cd, p + 8);
     const method = u16(cd, p + 10);
+    const crc32 = u32(cd, p + 16);
     let offset = u32(cd, p + 42);
     let compressedSize = u32(cd, p + 20);
     let size = u32(cd, p + 24);
@@ -156,6 +158,7 @@ export async function readEntries(reader: RangeReader, maxEntries = 200_000): Pr
       directory: name.endsWith('/') || name.endsWith('\\'),
       method,
       offset,
+      crc32,
     });
     p += 46 + nameLength + extraLength + commentLength;
   }

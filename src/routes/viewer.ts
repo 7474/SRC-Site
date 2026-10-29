@@ -1,7 +1,7 @@
 // データビューア（/viewer/。7474/SRC の SRCTestBlazor）が読む、公開している zip の一覧と中身の目次（docs/resources.md）
 import { Hono } from 'hono';
 import type { AppEnv } from '../env';
-import { loadPacks, memberId, packMembers, PLAYABLE_SELECT, resolveRequires, type PlayableRow } from '../lib/catalog';
+import { PLAYABLE_SELECT, resolveRequires, usablePack, type PackRow, type PlayableRow } from '../lib/catalog';
 import { findArchive, listEntries, type ArchiveType } from '../lib/archives';
 import { ZipError } from '../lib/zip';
 import { parseJsonArray } from '../lib/util';
@@ -11,57 +11,45 @@ export const viewer = new Hono<AppEnv>();
 /** データビューアのアーカイブの一覧の 1 項目（形は 7474/SRC の docs/gui/dataviewer.md） */
 export type ViewerArchive = {
   id: string;
-  kind: 'scenario' | 'resource' | 'pack';
+  kind: 'scenario' | 'pack';
   title: string;
   author?: string;
   description?: string;
   license?: string;
-  tags?: string[];
   /** ポータルの頁 */
   page: string;
   /** zip の中のファイルの一覧（JSON） */
-  files?: string;
+  files: string;
   /** zip の中のファイルの URL の前に付けるもの（base + zip の中の道） */
-  base?: string;
+  base: string;
   root?: string;
-  /** 重ねるアーカイブ（シナリオ）。投稿素材のパックは中の素材に展開してある */
+  /** 重ねるアーカイブ（シナリオ） */
   requires?: string[];
-  /** 投稿先のパック（素材） */
-  pack?: string;
-  /** パックの中の素材（投稿素材のパック。重ねる順） */
-  members?: string[];
 };
 
 viewer.get('/index.json', async c => {
-  const scenarios = (await c.env.DB.prepare(`${PLAYABLE_SELECT} AND s.visibility = 'public' ORDER BY s.updated_at DESC`).all<PlayableRow>()).results;
-  const { packs, members } = await loadPacks(c.env.DB);
+  const [scenarios, packs] = await c.env.DB.batch([
+    c.env.DB.prepare(`${PLAYABLE_SELECT} AND s.visibility = 'public' ORDER BY s.updated_at DESC`),
+    c.env.DB.prepare('SELECT * FROM packs ORDER BY priority, id'),
+  ]);
+  const packRows = packs.results as PackRow[];
   const archives: ViewerArchive[] = [];
-  for (const s of scenarios) {
+  for (const s of scenarios.results as PlayableRow[]) {
     archives.push({
       id: s.slug, kind: 'scenario', title: s.title, ...optional({ author: s.author, description: s.description?.slice(0, 200), license: s.license, root: s.root }),
       page: `/scenarios/${s.slug}`,
       files: `/api/viewer/archives/scenarios/${s.slug}/${s.number}.json`,
       base: `/files/scenarios/${s.slug}/${s.number}/`,
-      requires: resolveRequires(packs, parseJsonArray(s.requires), parseJsonArray(s.excludes), members),
+      requires: resolveRequires(packRows, parseJsonArray(s.requires), parseJsonArray(s.excludes)),
     });
   }
-  for (const m of members) {
+  for (const p of packRows.filter(usablePack)) {
     archives.push({
-      id: memberId(m.slug), kind: 'resource', title: m.title, ...optional({ author: m.author, license: m.license, root: m.root }),
-      page: `/resources/${m.slug}`,
-      files: `/api/viewer/archives/resources/${m.slug}/${m.number}.json`,
-      base: `/files/resources/${m.slug}/${m.number}/`,
-      pack: m.pack_id,
+      id: p.id, kind: 'pack', title: p.title, ...optional({ description: p.description, license: p.license, root: p.root }),
+      page: `/packs/${p.id}`,
+      files: `/api/viewer/archives/packs/${p.id}/${p.version}.json`,
+      base: `/files/packs/${p.id}/${p.version}/`,
     });
-  }
-  for (const p of packs.filter(x => !x.withdrawn).sort((a, b) => a.priority - b.priority || a.id.localeCompare(b.id))) {
-    archives.push(p.kind === 'community'
-      ? { id: p.id, kind: 'pack', title: p.title, license: p.license, page: `/packs/${p.id}`, members: packMembers(members, p.id).map(m => memberId(m.slug)) }
-      : {
-        id: p.id, kind: 'pack', title: p.title, license: p.license, ...optional({ root: p.root }), page: `/packs/${p.id}`,
-        files: `/api/viewer/archives/packs/${p.id}/${p.version}.json`,
-        base: `/files/packs/${p.id}/${p.version}/`,
-      });
   }
   c.header('Cache-Control', 'public, max-age=60');
   c.header('Cross-Origin-Resource-Policy', 'same-origin');
@@ -69,7 +57,7 @@ viewer.get('/index.json', async c => {
 });
 
 // zip の中のファイルの一覧。版を含めて不変なので、Cache API に置く
-viewer.get('/archives/:type{scenarios|resources|packs}/:id/:file', async c => {
+viewer.get('/archives/:type{scenarios|packs}/:id/:file', async c => {
   const m = /^(.+)\.json$/.exec(c.req.param('file'));
   if (!m) {
     return c.notFound();

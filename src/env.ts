@@ -44,7 +44,8 @@ export function withoutPlaceholders(env: Bindings): Bindings {
   return result;
 }
 
-export type InspectMessage = { versionId: number };
+// 版（シナリオ）か、パックへの投稿の検査
+export type InspectMessage = { versionId: number; submissionId?: undefined } | { submissionId: number; versionId?: undefined };
 
 export type User = {
   id: number;

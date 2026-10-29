@@ -78,11 +78,6 @@ export function parseJsonArray(text: string | null | undefined): string[] {
   }
 }
 
-/** 公開の頁の道（シナリオは /scenarios/、共有パックに投稿した素材は /resources/） */
-export function itemPath(s: { kind?: string; slug: string }): string {
-  return `/${s.kind === 'resource' ? 'resources' : 'scenarios'}/${s.slug}`;
-}
-
 /** URL・SRC#Web の play に使う名前（英小文字・数字・-、3〜40 文字） */
 export const SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]{1,38}[a-z0-9])$/;
 /** 表示名（URL にも使う。英数字・_・-、3〜24 文字） */

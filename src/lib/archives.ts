@@ -1,18 +1,18 @@
-// 公開している zip（シナリオ・投稿した素材・サイトのパック）の中のファイルを、1 つずつ返す（データビューアが読む。docs/resources.md）
+// 公開している zip（シナリオ・共有パック）とパックへの投稿の中のファイルを、1 つずつ返す（データビューア・投稿のプレビューが読む。docs/resources.md）
 import { findEntry, extractEntry, r2Reader, readEntries, ZipError, type ZipEntry } from './zip';
 
-/** 道の種類。scenarios・resources は scenarios の表（kind で分ける）、packs はサイトのパック */
-export type ArchiveType = 'scenarios' | 'resources' | 'packs';
+/** 道の種類。scenarios はシナリオの版、packs は共有パック（サイトのもの・利用者が作ったもの） */
+export type ArchiveType = 'scenarios' | 'packs';
 
 export type ArchiveObject = { r2_key: string; size: number };
 
 /**
- * 公開している zip を探す。シナリオ・素材は版の番号、パックは版（packs.version）で指す。
+ * 公開している zip を探す。シナリオは版の番号、パックは版（packs.version）で指す。
  * 見せないもの（非公開・運営が止めた・取り下げた・検査前）は null
  */
 export async function findArchive(db: D1Database, type: ArchiveType, id: string, version: string): Promise<ArchiveObject | null> {
   if (type === 'packs') {
-    return db.prepare("SELECT r2_key, size FROM packs WHERE id = ? AND version = ? AND withdrawn = 0 AND kind = 'site'")
+    return db.prepare("SELECT r2_key, size FROM packs WHERE id = ? AND version = ? AND withdrawn = 0 AND r2_key != ''")
       .bind(id, version).first<ArchiveObject>();
   }
   if (!/^\d+$/.test(version)) {
@@ -20,8 +20,8 @@ export async function findArchive(db: D1Database, type: ArchiveType, id: string,
   }
   return db.prepare(
     `SELECT v.r2_key, v.size FROM versions v JOIN scenarios s ON s.id = v.scenario_id
-      WHERE s.slug = ? AND s.kind = ? AND v.number = ? AND v.state = 'published' AND s.hidden = 0 AND s.visibility != 'private'`,
-  ).bind(id, type === 'resources' ? 'resource' : 'scenario', Number(version)).first<ArchiveObject>();
+      WHERE s.slug = ? AND v.number = ? AND v.state = 'published' AND s.hidden = 0 AND s.visibility != 'private'`,
+  ).bind(id, Number(version)).first<ArchiveObject>();
 }
 
 export async function listEntries(bucket: R2Bucket, a: ArchiveObject): Promise<ZipEntry[]> {
