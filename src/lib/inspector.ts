@@ -4,11 +4,12 @@ import { inspect, r2Reader, readEntries, ZipError } from './zip';
 import { abortMultipartUpload, canPresign } from './presign';
 import { now } from './util';
 
-type VersionRow = { id: number; scenario_id: number; number: number; state: string; r2_key: string; size: number };
+type VersionRow = { id: number; scenario_id: number; number: number; state: string; r2_key: string; size: number; kind: string };
 
 export async function inspectVersion(env: Bindings, versionId: number): Promise<void> {
-  const v = await env.DB.prepare('SELECT id, scenario_id, number, state, r2_key, size FROM versions WHERE id = ?')
-    .bind(versionId).first<VersionRow>();
+  const v = await env.DB.prepare(
+    'SELECT v.id, v.scenario_id, v.number, v.state, v.r2_key, v.size, s.kind FROM versions v JOIN scenarios s ON s.id = v.scenario_id WHERE v.id = ?',
+  ).bind(versionId).first<VersionRow>();
   if (!v || v.state !== 'inspecting') {
     return;
   }
@@ -27,7 +28,7 @@ export async function inspectVersion(env: Bindings, versionId: number): Promise<
   }
   let result;
   try {
-    result = inspect(await readEntries(r2Reader(env.FILES, v.r2_key, head.size)));
+    result = inspect(await readEntries(r2Reader(env.FILES, v.r2_key, head.size)), v.kind === 'resource' ? 'resource' : 'scenario');
   } catch (e) {
     if (e instanceof ZipError) {
       await reject(e.message);

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { catalog, resolveRequires, type PackRow, type PlayableRow } from '../src/lib/catalog';
+import { archiveUrls, catalog, resolveRequires, selectPacks, type MemberRow, type PackRow, type PlayableRow } from '../src/lib/catalog';
+import { entryContentType } from '../src/lib/archives';
 import { reportUrl } from '../src/lib/util';
 
 const pack = (id: string, is_default: number, priority: number, withdrawn = 0): PackRow => ({
@@ -29,6 +30,46 @@ describe('resolveRequires', () => {
     expect(c.entries.slice(1).map(e => [e.id, e.kind, e.archive])).toEqual([
       ['basic', 'asset', '/files/packs/basic/v1.zip'],
       ['graphic', 'asset', '/files/packs/graphic/v1.zip'],
+    ]);
+  });
+});
+
+describe('投稿素材のパック', () => {
+  const community = (id: string, priority: number): PackRow => ({ ...pack(id, 0, priority), kind: 'community', version: '', r2_key: '', size: 0 });
+  const packs = [pack('basic', 1, 0), pack('graphic', 1, 10), community('user-free', 100), community('user-credit', 110)];
+  const member = (slug: string, pack_id: string, number = 1): MemberRow => ({
+    pack_id, slug, title: slug, author: null, license: null, version_id: number * 10, number, etag: `etag${slug}`, root: null, size: 1,
+  });
+  // MEMBER_SELECT の順（古い投稿から）
+  const members = [member('old', 'user-free'), member('mid', 'user-credit', 2), member('new', 'user-free')];
+  const row: PlayableRow = {
+    slug: 'lantern', title: 'ランタン号', author: null, license: null, description: null,
+    version_id: 1, number: 1, etag: 'e', root: null, eve: null, requires: '["user-free","user-credit"]', excludes: '[]',
+  };
+
+  it('選んだパックは展開しない（頁に出す）', () => {
+    expect(selectPacks(packs, ['user-free'], [])).toEqual(['basic', 'graphic', 'user-free']);
+  });
+
+  it('カタログでは中の素材に展開する。新しい投稿を先に、先に投稿したものを後ろ（優先）に並べる', () => {
+    expect(resolveRequires(packs, ['user-free', 'user-credit'], [], members))
+      .toEqual(['basic', 'graphic', 'resource.new', 'resource.old', 'resource.mid']);
+    const c = catalog('Site', [row], packs, members);
+    expect(c.entries.map(e => e.id)).toEqual(['lantern', 'basic', 'graphic', 'resource.old', 'resource.mid', 'resource.new']);
+    expect(c.entries.find(e => e.id === 'resource.mid')).toMatchObject({ kind: 'asset', archive: '/files/resources/mid/2.zip', version: '2-etagmid' });
+  });
+
+  it('素材の無いパックは何も重ねない。zip の URL は中の素材の zip', () => {
+    expect(resolveRequires([...packs, community('empty', 120)], ['empty'], ['basic', 'graphic'], members)).toEqual([]);
+    expect(archiveUrls(packs, resolveRequires(packs, ['user-credit'], [], members), members))
+      .toEqual(['/files/packs/basic/v1.zip', '/files/packs/graphic/v1.zip', '/files/resources/mid/2.zip']);
+  });
+});
+
+describe('entryContentType', () => {
+  it('画像・音だけ種類を付け、ほかは中身を解釈させない', () => {
+    expect(['a.BMP', 'b.png', 'c.wav', 'd.MP3', 'e.mid', 'f.svg', 'g.html', 'h.txt'].map(entryContentType)).toEqual([
+      'image/bmp', 'image/png', 'audio/wav', 'audio/mpeg', 'audio/midi', 'application/octet-stream', 'application/octet-stream', 'application/octet-stream',
     ]);
   });
 });

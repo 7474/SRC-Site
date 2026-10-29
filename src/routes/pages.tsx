@@ -2,13 +2,15 @@
 import { Hono, type Context } from 'hono';
 import type { AppEnv } from '../env';
 import { Layout, Notice } from '../views/layout';
-import { EditPage, Home, MePage, NewScenarioPage, PackPage, PacksPage, ScenarioPage, Simple, UserPage, type ListItem, type ScenarioForm } from '../views/pages';
+import { EditPage, Home, MePage, NewResourcePage, NewScenarioPage, PackPage, PacksPage, ResourcePage, ScenarioPage, Simple, UserPage, type ListItem, type ScenarioForm } from '../views/pages';
 import { Rights, Terms } from '../views/about';
-import { CheckPage, type CheckPack } from '../views/check';
-import { canEdit, canView, getScenario, LIST_SELECT, requireUser } from './common';
+import { CheckPage } from '../views/check';
+import { canEdit, canView, getScenario, LIST_SELECT, requireUser, type ScenarioRow } from './common';
+import { archiveUrls, loadPacks, MEMBER_SELECT, packMembers, resolveRequires, selectPacks, type MemberRow, type PackRow } from '../lib/catalog';
+import { policyOf } from '../lib/policy';
 import { verifyTurnstile } from '../lib/turnstile';
 import { canPresign } from '../lib/presign';
-import { HANDLE_PATTERN, now, parseJsonArray, reportUrl, SLUG_PATTERN } from '../lib/util';
+import { HANDLE_PATTERN, itemPath, now, parseJsonArray, reportUrl, SLUG_PATTERN } from '../lib/util';
 import type { Child } from 'hono/jsx';
 
 export const pages = new Hono<AppEnv>();
@@ -24,7 +26,7 @@ function notFound(c: Context<AppEnv>) {
 
 pages.get('/', async c => {
   const q = (c.req.query('q') ?? '').trim().slice(0, 50);
-  const base = `${LIST_SELECT} WHERE s.hidden = 0 AND s.visibility = 'public' AND s.latest_version IS NOT NULL`;
+  const base = `${LIST_SELECT} WHERE s.kind = 'scenario' AND s.hidden = 0 AND s.visibility = 'public' AND s.latest_version IS NOT NULL`;
   let latest: ListItem[];
   let popular: ListItem[] = [];
   if (q) {
@@ -52,36 +54,95 @@ pages.post('/my/scenarios/new', requireUser, async c => {
   }
   const v = readScenarioForm(await c.req.parseBody());
   const fail = (error: string) => render(c, '投稿', <NewScenarioPage v={v} error={error} />, 400);
-  if (!SLUG_PATTERN.test(v.slug)) {
-    return fail('ID は英小文字・数字・- の 3〜40 文字にしてください（先頭と末尾は英数字）。');
+  const error = await checkNew(c, v);
+  if (error) {
+    return fail(error);
   }
-  if (!v.title) {
-    return fail('題名を入れてください。');
-  }
-  if (await c.env.DB.prepare('SELECT 1 FROM scenarios WHERE slug = ?').bind(v.slug).first()) {
-    return fail('その ID は使われています。');
-  }
-  const t = now();
-  await c.env.DB.prepare(
-    `INSERT INTO scenarios (slug, owner_id, title, author, description, license, tags, visibility, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).bind(v.slug, user.id, v.title, v.author || null, v.description || null, v.license || null, tagsJson(v.tags), v.visibility, t, t).run();
+  await insertItem(c, v, 'scenario', null);
   return c.redirect(`/my/scenarios/${v.slug}`);
 });
+
+// 素材を共有パックに投稿する（docs/resources.md）。zip を上げるところからはシナリオと同じ
+pages.get('/my/resources/new', requireUser, async c => {
+  if (!c.get('user')!.terms_accepted_at) {
+    return c.redirect('/my');
+  }
+  const v = { ...EMPTY_FORM, pack: c.req.query('pack') ?? '' };
+  return render(c, '素材の投稿', <NewResourcePage v={v} packs={await communityPacks(c)} />);
+});
+
+pages.post('/my/resources/new', requireUser, async c => {
+  const user = c.get('user')!;
+  if (!user.terms_accepted_at) {
+    return c.redirect('/my');
+  }
+  const form = await c.req.parseBody();
+  const v = readScenarioForm(form);
+  const packs = await communityPacks(c);
+  const fail = (error: string) => render(c, '素材の投稿', <NewResourcePage v={v} packs={packs} error={error} />, 400);
+  const error = (await checkNew(c, v)) ?? checkPack(packs, v, form.agree === '1');
+  if (error) {
+    return fail(error);
+  }
+  await insertItem(c, v, 'resource', v.pack);
+  return c.redirect(`/my/scenarios/${v.slug}`);
+});
+
+async function checkNew(c: Context<AppEnv>, v: ScenarioForm): Promise<string | null> {
+  if (!SLUG_PATTERN.test(v.slug)) {
+    return 'ID は英小文字・数字・- の 3〜40 文字にしてください（先頭と末尾は英数字）。';
+  }
+  if (!v.title) {
+    return '題名を入れてください。';
+  }
+  if (await c.env.DB.prepare('SELECT 1 FROM scenarios WHERE slug = ?').bind(v.slug).first()) {
+    return 'その ID は使われています。';
+  }
+  return null;
+}
+
+/** 素材の投稿先のパックと、そのポリシーへの同意・条件を確かめる */
+function checkPack(packs: CommunityPack[], v: ScenarioForm, agreed: boolean): string | null {
+  const pack = packs.find(p => p.id === v.pack);
+  const policy = policyOf(pack?.policy);
+  if (!pack || !policy) {
+    return '投稿先のパックを選んでください。';
+  }
+  if (!agreed) {
+    return `パックの管理ポリシー（${policy.title}）に同意してください。`;
+  }
+  if (policy.requiresLicense && !v.license) {
+    return 'このパックでは「ライセンス・配布の条件」を書いてください。';
+  }
+  return null;
+}
+
+async function insertItem(c: Context<AppEnv>, v: ScenarioForm, kind: 'scenario' | 'resource', packId: string | null) {
+  const t = now();
+  await c.env.DB.prepare(
+    `INSERT INTO scenarios (slug, owner_id, title, author, description, license, tags, visibility, kind, pack_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).bind(v.slug, c.get('user')!.id, v.title, v.author || null, v.description || null, v.license || null, tagsJson(v.tags), v.visibility, kind, packId, t, t).run();
+}
+
+export type CommunityPack = { id: string; title: string; policy: string; license: string };
+
+async function communityPacks(c: Context<AppEnv>): Promise<CommunityPack[]> {
+  return (await c.env.DB.prepare("SELECT id, title, policy, license FROM packs WHERE kind = 'community' AND withdrawn = 0 ORDER BY priority, id")
+    .all<CommunityPack>()).results;
+}
 
 pages.get('/scenarios/:slug', async c => {
   const s = await getScenario(c, c.req.param('slug'));
   if (!s || !canView(c, s)) {
     return notFound(c);
   }
-  const versions = (await c.env.DB.prepare(
-    'SELECT id, number, state, size, created_at, published_at, note, inspect_note, root, eve, manifest, requires, excludes FROM versions WHERE scenario_id = ? ORDER BY number DESC',
-  ).bind(s.id).all<any>()).results;
-  const latestRow = versions.find(v => v.id === s.latest_version) ?? null;
-  const latest = latestRow ? { ...latestRow, manifest: latestRow.manifest ? JSON.parse(latestRow.manifest) : null } : null;
-  const { resolveRequires } = await import('../lib/catalog');
-  const allPacks = (await c.env.DB.prepare('SELECT * FROM packs').all<any>()).results;
-  const ids = latest ? resolveRequires(allPacks, parseJsonArray(latest.requires), parseJsonArray(latest.excludes)) : [];
+  if (s.kind === 'resource') {
+    return c.redirect(itemPath(s), 301);
+  }
+  const { latest, versions } = await versionsOf(c, s);
+  const allPacks = (await c.env.DB.prepare('SELECT * FROM packs').all<PackRow>()).results;
+  const ids = latest ? selectPacks(allPacks, parseJsonArray(latest.requires), parseJsonArray(latest.excludes)) : [];
   const packs = ids.map(id => allPacks.find(p => p.id === id)!);
   return render(c, s.title, (
     <ScenarioPage
@@ -96,6 +157,38 @@ pages.get('/scenarios/:slug', async c => {
   ));
 });
 
+pages.get('/resources/:slug', async c => {
+  const s = await getScenario(c, c.req.param('slug'));
+  if (!s || !canView(c, s)) {
+    return notFound(c);
+  }
+  if (s.kind !== 'resource') {
+    return c.redirect(itemPath(s), 301);
+  }
+  const { latest, versions } = await versionsOf(c, s);
+  const pack = s.pack_id ? await c.env.DB.prepare('SELECT id, title, policy, license FROM packs WHERE id = ?').bind(s.pack_id).first<CommunityPack>() : null;
+  return render(c, s.title, (
+    <ResourcePage
+      s={{ ...s, tags: parseJsonArray(s.tags) }}
+      latest={latest}
+      versions={versions}
+      pack={pack}
+      canEdit={canEdit(c, s)}
+      isAdmin={c.get('user')?.role === 'admin'}
+      reportUrl={reportUrl(c.env.REPORT_FORM_URL, { url: new URL(`/resources/${s.slug}`, c.req.url).toString(), title: s.title })}
+    />
+  ));
+});
+
+async function versionsOf(c: Context<AppEnv>, s: ScenarioRow) {
+  const versions = (await c.env.DB.prepare(
+    'SELECT id, number, state, size, created_at, published_at, note, inspect_note, root, eve, manifest, requires, excludes FROM versions WHERE scenario_id = ? ORDER BY number DESC',
+  ).bind(s.id).all<any>()).results;
+  const latestRow = versions.find(v => v.id === s.latest_version) ?? null;
+  const latest = latestRow ? { ...latestRow, manifest: latestRow.manifest ? JSON.parse(latestRow.manifest) : null } : null;
+  return { latest, versions };
+}
+
 pages.get('/users/:handle', async c => {
   const handle = c.req.param('handle');
   const items = (await c.env.DB.prepare(`${LIST_SELECT} WHERE u.handle = ? AND s.hidden = 0 AND s.visibility = 'public' AND s.latest_version IS NOT NULL ORDER BY s.updated_at DESC LIMIT 100`)
@@ -108,7 +201,11 @@ pages.get('/users/:handle', async c => {
 });
 
 pages.get('/packs', async c => {
-  const packs = (await c.env.DB.prepare('SELECT id, title, source_name, size, is_default, withdrawn FROM packs ORDER BY priority, id').all<any>()).results;
+  const packs = (await c.env.DB.prepare(
+    `SELECT p.id, p.title, p.source_name, p.size, p.is_default, p.withdrawn, p.kind, p.policy,
+            (SELECT COUNT(*) FROM (${MEMBER_SELECT}) m WHERE m.pack_id = p.id) AS members
+       FROM packs p ORDER BY p.priority, p.id`,
+  ).all<any>()).results;
   return render(c, '共有パック', <PacksPage packs={packs} />);
 });
 
@@ -119,13 +216,20 @@ pages.get('/packs/:id', async c => {
   }
   const takedowns = (await c.env.DB.prepare("SELECT target_id, reason, created_at FROM takedowns WHERE (target_type = 'pack' AND target_id = ?1) OR (target_type = 'pack_file' AND target_id LIKE ?1 || ':%') ORDER BY created_at DESC")
     .bind(p.id).all<any>()).results;
-  return render(c, p.title, <PackPage p={p} takedowns={takedowns} />);
+  // 投稿素材のパックは中の素材を、重ねる順（後ろほど優先）に出す
+  const members = p.kind === 'community'
+    ? packMembers((await c.env.DB.prepare(MEMBER_SELECT).all<MemberRow>()).results, p.id)
+    : [];
+  return render(c, p.title, <PackPage p={p} takedowns={takedowns} members={members} />);
 });
 
 // データ・シナリオのチェッカー（ログインは要らない）。汎用データは公開しているパックから選ぶ
 pages.get('/check', async c => {
-  const packs = (await c.env.DB.prepare('SELECT id, title, is_default, version FROM packs WHERE withdrawn = 0 ORDER BY priority, id').all<CheckPack>()).results;
-  return render(c, 'データ・シナリオのチェック', <CheckPage packs={packs} />);
+  const { packs, members } = await loadPacks(c.env.DB);
+  const checkPacks = packs.filter(p => !p.withdrawn).sort((a, b) => a.priority - b.priority || a.id.localeCompare(b.id))
+    .map(p => ({ id: p.id, title: p.title, is_default: p.is_default, urls: archiveUrls(packs, resolveRequires(packs, [p.id], packs.map(x => x.id), members), members) }))
+    .filter(p => p.urls.length > 0);
+  return render(c, 'データ・シナリオのチェック', <CheckPage packs={checkPacks} />);
 });
 
 pages.get('/about/terms', c => render(c, '利用規約', <Terms />));
@@ -158,7 +262,7 @@ pages.post('/my', requireUser, async c => {
   return c.redirect('/my?saved=1');
 });
 
-const EMPTY_FORM: ScenarioForm = { slug: '', title: '', author: '', description: '', license: '', tags: '', visibility: 'public' };
+const EMPTY_FORM: ScenarioForm = { slug: '', title: '', author: '', description: '', license: '', tags: '', visibility: 'public', pack: '' };
 
 function readScenarioForm(form: Record<string, unknown>): ScenarioForm {
   const text = (key: string, max: number) => String(form[key] ?? '').trim().slice(0, max);
@@ -170,6 +274,7 @@ function readScenarioForm(form: Record<string, unknown>): ScenarioForm {
     license: text('license', 5000),
     tags: text('tags', 200),
     visibility: ['public', 'unlisted', 'private'].includes(form.visibility as string) ? form.visibility as string : 'public',
+    pack: text('pack', 40),
   };
 }
 
@@ -184,14 +289,21 @@ async function editPage(c: Context<AppEnv>, slug: string, extra: { error?: strin
   }
   const versions = (await c.env.DB.prepare('SELECT id, number, state, size, created_at, published_at, note, inspect_note, root, eve, requires, excludes FROM versions WHERE scenario_id = ? ORDER BY number DESC')
     .bind(s.id).all<any>()).results;
-  const packs = (await c.env.DB.prepare('SELECT id, title, is_default, priority, withdrawn, version FROM packs WHERE withdrawn = 0 ORDER BY priority, id').all<any>()).results;
+  const { packs: allPacks, members } = await loadPacks(c.env.DB);
+  const packs = allPacks.filter(p => !p.withdrawn).sort((a, b) => a.priority - b.priority || a.id.localeCompare(b.id));
   const form = extra.form ?? {
     slug: s.slug, title: s.title, author: s.author ?? '', description: s.description ?? '', license: s.license ?? '',
-    tags: parseJsonArray(s.tags).join(' '), visibility: s.visibility,
+    tags: parseJsonArray(s.tags).join(' '), visibility: s.visibility, pack: s.pack_id ?? '',
   };
+  // lint が汎用データ（Data/System の sp.txt など）を読むパック。遊ぶときに重ねるものと同じ
+  const latestPublished = versions.find(v => v.state === 'published');
+  const systemArchives = latestPublished
+    ? archiveUrls(packs, resolveRequires(packs, parseJsonArray(latestPublished.requires), parseJsonArray(latestPublished.excludes), members), members)
+    : archiveUrls(packs, resolveRequires(packs, [], [], members), members);
   return render(c, `${s.title} の編集`, (
-    <EditPage slug={s.slug} v={form} versions={versions} packs={packs} error={extra.error} saved={extra.saved}
-      turnstileKey={c.env.TURNSTILE_SITE_KEY} directUpload={canPresign(c.env)} />
+    <EditPage slug={s.slug} kind={s.kind === 'resource' ? 'resource' : 'scenario'} v={form} versions={versions} packs={packs}
+      communityPacks={s.kind === 'resource' ? await communityPacks(c) : []} systemArchives={systemArchives}
+      error={extra.error} saved={extra.saved} turnstileKey={c.env.TURNSTILE_SITE_KEY} directUpload={canPresign(c.env)} />
   ), extra.error ? 400 : 200);
 }
 
@@ -202,14 +314,24 @@ pages.post('/my/scenarios/:slug', requireUser, async c => {
   if (!s || !canEdit(c, s)) {
     return notFound(c);
   }
-  const v = readScenarioForm(await c.req.parseBody());
+  const form = await c.req.parseBody();
+  const v = readScenarioForm(form);
   v.slug = s.slug;
   if (!v.title) {
     return editPage(c, s.slug, { error: '題名を入れてください。', form: v });
   }
+  if (s.kind === 'resource') {
+    // 投稿先のパックを変えるときは、新しいパックのポリシーに同意してもらう
+    const error = checkPack(await communityPacks(c), v, form.agree === '1' || v.pack === s.pack_id);
+    if (error) {
+      return editPage(c, s.slug, { error, form: v });
+    }
+  } else {
+    v.pack = '';
+  }
   await c.env.DB.prepare(
-    'UPDATE scenarios SET title = ?, author = ?, description = ?, license = ?, tags = ?, visibility = ?, updated_at = ? WHERE id = ?',
-  ).bind(v.title, v.author || null, v.description || null, v.license || null, tagsJson(v.tags), v.visibility, now(), s.id).run();
+    'UPDATE scenarios SET title = ?, author = ?, description = ?, license = ?, tags = ?, visibility = ?, pack_id = ?, updated_at = ? WHERE id = ?',
+  ).bind(v.title, v.author || null, v.description || null, v.license || null, tagsJson(v.tags), v.visibility, v.pack || null, now(), s.id).run();
   return c.redirect(`/my/scenarios/${s.slug}?saved=1`);
 });
 

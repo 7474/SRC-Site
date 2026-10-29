@@ -177,12 +177,40 @@ export type Manifest = {
   eves: string[];
   documents: string[];
   roots: string[];
+  /** 種類ごとのファイルの数（素材の投稿だけ） */
+  media?: Partial<Record<MediaKind, number>>;
 };
+
+/** 投稿の種類。scenario はシナリオ、resource は共有パックに投稿する素材（docs/resources.md） */
+export type UploadKind = 'scenario' | 'resource';
+
+export type MediaKind = 'image' | 'audio' | 'midi' | 'data' | 'event' | 'map' | 'document' | 'other';
+
+/** ファイルの種類（拡張子で決める）。データビューアの一覧とパックの頁に使う */
+const MEDIA_KINDS: [MediaKind, RegExp][] = [
+  ['image', /\.(bmp|png|jpe?g|gif)$/i],
+  ['audio', /\.(wav|mp3|ogg)$/i],
+  ['midi', /\.(mid|midi)$/i],
+  ['event', /\.eve$/i],
+  ['map', /\.map$/i],
+  ['document', /(^|\/)(readme[^/]*|[^/]*\.(md|htm|html))$/i],
+  ['data', /\.txt$/i],
+];
+
+export function mediaKind(name: string): MediaKind {
+  return MEDIA_KINDS.find(([, pattern]) => pattern.test(name))?.[0] ?? 'other';
+}
+
+// 素材の zip で、SRC のフォルダ（展開先）の直下にあるフォルダ。これで始まらない 1 つのフォルダに入っていれば、それを root にする
+const SRC_FOLDERS = /^(bitmap|sound|midi|music|data|lib)$/i;
 
 export type Inspection = { ok: true; manifest: Manifest; root: string | null; eve: string | null } | { ok: false; reason: string };
 
-/** 目次を規則で検査し、root と最初の .eve の候補を出す（docs/architecture.md の「検査」） */
-export function inspect(entries: ZipEntry[]): Inspection {
+/**
+ * 目次を規則で検査し、root と最初の .eve の候補を出す（docs/architecture.md の「検査」）。
+ * 素材（resource）は .eve が無くてよく、root は SRC のフォルダの中身（Bitmap・Sound など）の上のフォルダにする
+ */
+export function inspect(entries: ZipEntry[], kind: UploadKind = 'scenario'): Inspection {
   const files = entries.filter(e => !e.directory);
   if (files.length > LIMITS.maxEntries) {
     return { ok: false, reason: `ファイルが多すぎます（${files.length}、上限 ${LIMITS.maxEntries}）` };
@@ -209,17 +237,28 @@ export function inspect(entries: ZipEntry[]): Inspection {
   }
   const names = files.map(e => e.name.replace(/\\/g, '/'));
   const eves = names.filter(n => /\.eve$/i.test(n));
-  if (eves.length === 0) {
+  if (eves.length === 0 && kind === 'scenario') {
     return { ok: false, reason: 'シナリオ（.eve）がありません' };
   }
-  // 全体が 1 つのフォルダに入っていれば、それを root にする
+  if (files.length === 0) {
+    return { ok: false, reason: 'ファイルがありません' };
+  }
+  // 全体が 1 つのフォルダに入っていれば、それを root にする（素材は、そのフォルダが Bitmap などそのものでなければ）
   const tops = new Set(names.map(n => (n.includes('/') ? n.slice(0, n.indexOf('/')) : '')));
-  const root = tops.size === 1 && !tops.has('') ? [...tops][0] : null;
+  const single = tops.size === 1 && !tops.has('') ? [...tops][0] : null;
+  const root = single && !(kind === 'resource' && SRC_FOLDERS.test(single)) ? single : null;
   const strip = (n: string) => (root ? n.slice(root.length + 1) : n);
   const depth = (n: string) => n.split('/').length;
   const sorted = eves.map(strip).sort((a, b) => depth(a) - depth(b) || a.localeCompare(b));
+  const media: Partial<Record<MediaKind, number>> = {};
+  if (kind === 'resource') {
+    for (const n of names) {
+      const k = mediaKind(n);
+      media[k] = (media[k] ?? 0) + 1;
+    }
+  }
   // 浅い階層の .eve のうち、データの読み込み用（Data・Lib・Include の下）でないものを最初の候補にする
-  const candidate = sorted.find(n => !/^(data|lib|include)\//i.test(n)) ?? sorted[0];
+  const candidate = kind === 'scenario' ? sorted.find(n => !/^(data|lib|include)\//i.test(n)) ?? sorted[0] : null;
   return {
     ok: true,
     root,
@@ -230,8 +269,15 @@ export function inspect(entries: ZipEntry[]): Inspection {
       eves: sorted.slice(0, 200),
       documents: names.map(strip).filter(n => DOCUMENT.test(n) && depth(n) <= 2).slice(0, 50),
       roots: [...tops].filter(t => t).slice(0, 20),
+      ...(kind === 'resource' ? { media } : {}),
     },
   };
+}
+
+/** 項目を名前で探す（区切りの \ と /、大文字小文字を区別しない。元の SRC は Windows で動くため） */
+export function findEntry(entries: ZipEntry[], path: string): ZipEntry | undefined {
+  const key = path.replace(/\\/g, '/').toLowerCase();
+  return entries.find(e => !e.directory && e.name.replace(/\\/g, '/').toLowerCase() === key);
 }
 
 /** 項目の中身を取り出す（無圧縮か deflate。DecompressionStream を使う） */

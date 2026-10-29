@@ -9,6 +9,7 @@ SRC-Site は Cloudflare Workers で動く、SRC#Web を組み込んだ SRC シ�
 | [design.md](design.md) | 構成案（方向・課題・決めたこと） |
 | [architecture.md](architecture.md) | 設計（URL の体系・データ・投稿と検査・カタログ・配信） |
 | [assets.md](assets.md) | プレイのための要素（アセット）の整理 |
+| [resources.md](resources.md) | 素材の投稿と閲覧（管理ポリシーごとの投稿素材のパック・データビューア） |
 | [operations.md](operations.md) | 運用（準備・Secret・配信・通報・運営・ローカル開発） |
 
 ## 構成

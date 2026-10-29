@@ -61,12 +61,14 @@
     try {
       show('zip の中身を確かめています…');
       const { precheck } = await import('/static/precheck.js');
-      const checked = await precheck(file);
+      // 素材（共有パックへの投稿）は .eve が無くてよい。lint はシナリオだけにかける
+      const resource = form.dataset.kind === 'resource';
+      const checked = await precheck(file, resource ? 'resource' : 'scenario');
       if (!checked.ok) {
         show(`この zip は上げられません: ${checked.reason}`, true);
         return;
       }
-      const level = form.lintLevel.value;
+      const level = resource ? 'off' : form.lintLevel.value;
       let found = [];
       if (level !== 'off' && !form.lintConfirm.checked) {
         found = await lint(file, form.lintAssets.checked);

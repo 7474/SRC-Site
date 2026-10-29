@@ -1,6 +1,6 @@
 // アップロードの前に、ブラウザで zip の目次を読んで検査する（Worker の検査と同じ規則。src/lib/zip.ts）。
 // scripts/assemble.sh が dist/static/precheck.js に束ねる。public/upload.js が読み込む
-import { extractEntry, inspect, readEntries, ZipError, type RangeReader } from '../lib/zip';
+import { extractEntry, inspect, readEntries, ZipError, type RangeReader, type UploadKind } from '../lib/zip';
 
 export function fileReader(file: Blob): RangeReader {
   return {
@@ -13,10 +13,10 @@ export function fileReader(file: Blob): RangeReader {
 
 export type Precheck = { ok: true; root: string | null; eve: string | null; files: number } | { ok: false; reason: string };
 
-export async function precheck(file: Blob): Promise<Precheck> {
+export async function precheck(file: Blob, kind: UploadKind = 'scenario'): Promise<Precheck> {
   try {
     const entries = await readEntries(fileReader(file));
-    const result = inspect(entries);
+    const result = inspect(entries, kind);
     if (!result.ok) {
       return { ok: false, reason: result.reason };
     }

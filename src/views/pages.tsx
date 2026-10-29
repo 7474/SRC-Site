@@ -1,12 +1,17 @@
 import type { Child } from 'hono/jsx';
 import { Notice } from './layout';
-import { formatDate, formatSize } from '../lib/util';
-import { resolveRequires, type PackRow } from '../lib/catalog';
+import { formatDate, formatSize, itemPath } from '../lib/util';
+import { memberId, type MemberRow } from '../lib/catalog';
+import { policyOf } from '../lib/policy';
+import type { MediaKind } from '../lib/zip';
 
 export type ListItem = {
-  slug: string; title: string; author: string | null; handle: string; updated_at: number;
+  slug: string; kind?: string; title: string; author: string | null; handle: string; updated_at: number;
   size: number | null; description: string | null; plays: number | null;
 };
+
+// データビューア（/viewer/）でアーカイブを開く URL（7474/SRC の docs/gui/dataviewer.md）
+const viewerUrl = (id: string) => `/viewer/archive?id=${encodeURIComponent(id)}`;
 
 export function ScenarioList(props: { items: ListItem[]; empty?: string }) {
   if (props.items.length === 0) {
@@ -16,7 +21,8 @@ export function ScenarioList(props: { items: ListItem[]; empty?: string }) {
     <ul class="scenario-list">
       {props.items.map(s => (
         <li>
-          <a class="title" href={`/scenarios/${s.slug}`}>{s.title}</a>
+          <a class="title" href={itemPath(s)}>{s.title}</a>
+          {s.kind === 'resource' && <span class="list-badges"><span class="badge">素材</span></span>}
           <div class="meta">
             {s.author ?? s.handle} ・ {formatDate(s.updated_at)}{s.size != null && <> ・ {formatSize(s.size)}</>}
             {s.plays ? <> ・ {s.plays} 回プレイ</> : null}
@@ -43,8 +49,9 @@ export function Home(props: { q: string; latest: ListItem[]; popular: ListItem[]
             <div class="actions">
               <a class="button primary" href="/play/">SRC#Web で遊ぶ</a>
               <a class="button" href="/my/scenarios/new">シナリオを投稿する</a>
+              <a class="button" href="/my/resources/new">素材を投稿する</a>
             </div>
-            <p class="tools">道具：<a href="/check">チェッカー</a>（シナリオ・データの書き方を確かめる）・<a href="/viewer/">データビューア</a>（ユニット・パイロットなどのデータを見る）・<a href="/packs">共有パック</a>（シナリオが使う汎用の素材）</p>
+            <p class="tools">道具：<a href="/check">チェッカー</a>（シナリオ・データの書き方を確かめる）・<a href="/viewer/">データビューア</a>（データ・画像・音を見る）・<a href="/packs">共有パック</a>（シナリオが使う汎用の素材と、投稿された素材）</p>
           </section>
           {props.popular.length > 0 && (
             <section>
@@ -89,6 +96,7 @@ export function ScenarioPage(props: {
         <div class="actions">
           {latest && <a class="button primary" href={`/play/?play=${encodeURIComponent(s.slug)}`}>SRC#Web で遊ぶ</a>}
           {latest && <a class="button" href={`/scenarios/${s.slug}/download`}>ダウンロード（{formatSize(latest.size)}）</a>}
+          {latest && s.visibility === 'public' && !s.hidden && <a class="button" href={viewerUrl(s.slug)}>データビューアで見る</a>}
           {props.canEdit && <a class="button" href={`/my/scenarios/${s.slug}`}>編集・新しい版を上げる</a>}
         </div>
       )}
@@ -129,6 +137,80 @@ export function ScenarioPage(props: {
   );
 }
 
+const MEDIA_LABELS: Record<MediaKind, string> = {
+  image: '画像', audio: '音（WAV・MP3・OGG）', midi: 'MIDI', data: 'データ（.txt）', event: 'イベント（.eve）', map: 'マップ', document: '文書', other: 'ほか',
+};
+
+export function ResourcePage(props: {
+  s: { slug: string; title: string; author: string | null; description: string | null; license: string | null; handle: string; hidden: number; hidden_reason: string | null; visibility: string; tags: string[] };
+  latest: (VersionItem & { root: string | null; manifest: { files: number; totalSize: number; media?: Partial<Record<MediaKind, number>> } | null }) | null;
+  versions: VersionItem[];
+  pack: { id: string; title: string; policy: string; license: string } | null;
+  canEdit: boolean;
+  isAdmin: boolean;
+  reportUrl: string | null;
+}) {
+  const { s, latest, pack } = props;
+  const policy = policyOf(pack?.policy);
+  const media = latest?.manifest?.media ?? {};
+  return (
+    <article class="scenario">
+      <h1>{s.title}</h1>
+      <p class="meta">
+        素材 ・ {s.author && s.author !== s.handle && <>作者: {s.author} ・ </>}投稿: <a href={`/users/${s.handle}`}>{s.handle}</a>
+        {latest && <> ・ 第 {latest.number} 版（{formatDate(latest.published_at ?? latest.created_at)}）</>}
+        {s.visibility === 'unlisted' && ' ・ 限定公開'}
+      </p>
+      {s.hidden ? <Notice kind="error">運営により公開を止めています。{s.hidden_reason}</Notice> : null}
+      {!latest && <p class="muted">公開している版がありません。</p>}
+      {(latest || props.canEdit) && (
+        <div class="actions">
+          {latest && !s.hidden && s.visibility !== 'private' && <a class="button primary" href={viewerUrl(memberId(s.slug))}>データビューアで見る</a>}
+          {latest && <a class="button" href={`/files/resources/${s.slug}/${latest.number}.zip`} download={`${s.slug}-${latest.number}.zip`}>ダウンロード（{formatSize(latest.size)}）</a>}
+          {props.canEdit && <a class="button" href={`/my/scenarios/${s.slug}`}>編集・新しい版を上げる</a>}
+        </div>
+      )}
+      <section>
+        <h2>パック</h2>
+        {pack ? (
+          <p><a href={`/packs/${pack.id}`}>{pack.title}</a>{policy && <>（管理ポリシー: {policy.title}）</>}。シナリオの投稿者がこのパックを選ぶと、SRC#Web でシナリオと一緒に読み込みます。</p>
+        ) : <p class="muted">パックに入っていません。</p>}
+        {s.visibility === 'private' && <p class="muted small">非公開のあいだは、パックに入りません。</p>}
+      </section>
+      {s.description && <section><h2>説明</h2><p class="pre">{s.description}</p></section>}
+      {s.tags.length > 0 && <p class="tags">{s.tags.map(t => <a class="tag" href={`/?q=${encodeURIComponent(t)}`}>{t}</a>)}</p>}
+      <section>
+        <h2>ライセンス・配布の条件</h2>
+        {policy && <p class="pre">{policy.agreement}</p>}
+        {s.license && <p class="pre">{s.license}</p>}
+      </section>
+      {latest?.manifest && (
+        <section>
+          <h2>中身</h2>
+          <p>{latest.manifest.files} ファイル・展開後 {formatSize(latest.manifest.totalSize)}{latest.root && <>（フォルダ {latest.root}）</>}</p>
+          <ul>{(Object.keys(MEDIA_LABELS) as MediaKind[]).filter(k => media[k]).map(k => <li>{MEDIA_LABELS[k]}: {media[k]}</li>)}</ul>
+        </section>
+      )}
+      <section>
+        <h2>版</h2>
+        <ul class="versions">
+          {props.versions.filter(v => v.state === 'published').map(v => (
+            <li>第 {v.number} 版 ・ {formatDate(v.published_at ?? v.created_at)} ・ {formatSize(v.size)}{v.note && <> ・ {v.note}</>}</li>
+          ))}
+        </ul>
+      </section>
+      {props.reportUrl && (
+        <p class="report small"><a href={props.reportUrl} target="_blank" rel="noopener">この素材を通報する（Google フォーム）</a></p>
+      )}
+      {props.isAdmin && !s.hidden && (
+        <form method="post" action={`/admin/scenarios/${s.slug}/hide`} class="report compact">
+          <input name="reason" placeholder="止める理由（公開されます）" /> <button type="submit">運営: 公開を止める</button>
+        </form>
+      )}
+    </article>
+  );
+}
+
 export function Turnstile(props: { siteKey?: string }) {
   if (!props.siteKey) {
     return null;
@@ -144,7 +226,7 @@ export function Turnstile(props: { siteKey?: string }) {
 export function UserPage(props: { handle: string; items: ListItem[] }) {
   return (
     <section>
-      <h1>{props.handle} さんのシナリオ</h1>
+      <h1>{props.handle} さんの投稿</h1>
       <ScenarioList items={props.items} />
     </section>
   );
@@ -170,14 +252,15 @@ export function MePage(props: { handle: string; termsAccepted: boolean; items: (
         <form method="post" action="/auth/logout"><button type="submit" class="link">ログアウト</button></form>
       </section>
       <section>
-        <h2>投稿したシナリオ</h2>
-        <p><a class="button" href="/my/scenarios/new">新しく投稿する</a></p>
+        <h2>投稿したシナリオ・素材</h2>
+        <p><a class="button" href="/my/scenarios/new">シナリオを投稿する</a> <a class="button" href="/my/resources/new">素材を投稿する</a></p>
         {props.items.length === 0 ? <p class="muted">まだありません。</p> : (
           <ul class="scenario-list">
             {props.items.map(s => (
               <li>
-                <a class="title" href={`/scenarios/${s.slug}`}>{s.title}</a>
+                <a class="title" href={itemPath(s)}>{s.title}</a>
                 <span class="list-badges">
+                  {s.kind === 'resource' && <span class="badge">素材</span>}
                   {s.visibility !== 'public' && <span class="badge">{s.visibility === 'unlisted' ? '限定公開' : '非公開'}</span>}
                   {s.hidden ? <span class="badge stopped">運営が停止</span> : null}
                 </span>
@@ -191,27 +274,27 @@ export function MePage(props: { handle: string; termsAccepted: boolean; items: (
   );
 }
 
-export type ScenarioForm = { slug: string; title: string; author: string; description: string; license: string; tags: string; visibility: string };
+export type ScenarioForm = { slug: string; title: string; author: string; description: string; license: string; tags: string; visibility: string; pack: string };
 
-export function ScenarioFields(props: { v: ScenarioForm; isNew: boolean }) {
+export function ScenarioFields(props: { v: ScenarioForm; isNew: boolean; resource?: boolean }) {
   const v = props.v;
   return (
     <>
       {props.isNew && (
-        <label>ID（URL と SRC#Web の起動に使う。英小文字・数字・-、3〜40 文字。後から変えられません）
+        <label>ID（URL{props.resource ? '' : ' と SRC#Web の起動'}に使う。英小文字・数字・-、3〜40 文字。後から変えられません）
           <input name="slug" value={v.slug} pattern="[a-z0-9][a-z0-9\-]{1,38}[a-z0-9]" required />
         </label>
       )}
       <label>題名<input name="title" value={v.title} maxlength={100} required /></label>
       <label>作者（投稿者と違う場合。空なら表示名）<input name="author" value={v.author} maxlength={100} /></label>
       <label>説明<textarea name="description" rows={6} maxlength={5000}>{v.description}</textarea></label>
-      <label>ライセンス・配布の条件（使った素材の出典もここに）<textarea name="license" rows={4} maxlength={5000}>{v.license}</textarea></label>
+      <label>{props.resource ? 'ライセンス・配布の条件（パックの管理ポリシーに加える条件、素材の出典）' : 'ライセンス・配布の条件（使った素材の出典もここに）'}<textarea name="license" rows={4} maxlength={5000}>{v.license}</textarea></label>
       <label>タグ（空白区切り）<input name="tags" value={v.tags} maxlength={200} /></label>
       <label>公開
         <select name="visibility">
           <option value="public" selected={v.visibility === 'public'}>公開</option>
-          <option value="unlisted" selected={v.visibility === 'unlisted'}>限定公開（一覧に出さない。URL を知っている人は遊べる）</option>
-          <option value="private" selected={v.visibility === 'private'}>非公開</option>
+          <option value="unlisted" selected={v.visibility === 'unlisted'}>{props.resource ? '限定公開（一覧に出さない。パックには入る）' : '限定公開（一覧に出さない。URL を知っている人は遊べる）'}</option>
+          <option value="private" selected={v.visibility === 'private'}>{props.resource ? '非公開（パックにも入らない）' : '非公開'}</option>
         </select>
       </label>
     </>
@@ -232,40 +315,87 @@ export function NewScenarioPage(props: { v: ScenarioForm; error?: string }) {
   );
 }
 
+/** 投稿先のパックと、その管理ポリシーへの同意 */
+export function PackChoice(props: { packs: { id: string; title: string; policy: string; license: string }[]; selected: string; isNew: boolean }) {
+  return (
+    <fieldset class="pack-choice">
+      <legend>投稿先のパック（管理ポリシー）</legend>
+      {props.packs.map(p => (
+        <label class="check">
+          <input type="radio" name="pack" value={p.id} checked={props.selected === p.id} required />
+          <span><strong>{p.title}</strong>（{policyOf(p.policy)?.title ?? p.policy}）<br /><span class="small">{policyOf(p.policy)?.agreement ?? p.license}</span></span>
+        </label>
+      ))}
+      <label class="check">
+        <input type="checkbox" name="agree" value="1" required={props.isNew} />
+        選んだパックの管理ポリシーで公開することに同意します。{props.isNew ? '' : '（パックを変えるときに要ります）'}
+      </label>
+    </fieldset>
+  );
+}
+
+export function NewResourcePage(props: { v: ScenarioForm; packs: { id: string; title: string; policy: string; license: string }[]; error?: string }) {
+  return (
+    <section>
+      <h1>素材を投稿する</h1>
+      <p>画像・効果音・BGM・データなどの素材を、管理ポリシーの違う共有パックに投稿します。シナリオの投稿者がパックを選ぶと、SRC#Web でシナリオと一緒に読み込まれます。データビューアで、だれでも中身を見たり聞いたりできます。</p>
+      <ul class="small">
+        <li>zip の中は、SRC のフォルダの形（<code>Bitmap/Pilot/…</code>・<code>Sound/…</code>・<code>Midi/…</code>・<code>Data/…</code>）にしてください。フォルダごと zip にしてもかまいません</li>
+        <li><strong>JASRAC の管理曲は投稿できません。</strong>ほかの人の作品は、配布の条件が認めている場合だけ投稿してください（<a href="/about/terms">利用規約</a>）</li>
+        <li>同じ名前のファイルがほかの素材にもあれば、先に投稿された素材が使われます</li>
+      </ul>
+      {props.error && <Notice kind="error">{props.error}</Notice>}
+      <form method="post" action="/my/resources/new" class="form">
+        <PackChoice packs={props.packs} selected={props.v.pack} isNew={true} />
+        <ScenarioFields v={props.v} isNew={true} resource={true} />
+        <button type="submit">次へ</button>
+      </form>
+    </section>
+  );
+}
+
 export function EditPage(props: {
-  slug: string; v: ScenarioForm; versions: (VersionItem & { root: string | null; eve: string | null; requires: string; excludes: string })[];
-  packs: { id: string; title: string; is_default: number; priority: number; withdrawn: number; version: string }[]; error?: string; saved?: boolean; turnstileKey?: string; directUpload: boolean;
+  slug: string; kind: 'scenario' | 'resource'; v: ScenarioForm; versions: (VersionItem & { root: string | null; eve: string | null; requires: string; excludes: string })[];
+  packs: { id: string; title: string; is_default: number; priority: number; withdrawn: number; version: string }[];
+  communityPacks: { id: string; title: string; policy: string; license: string }[];
+  /** lint が汎用データ（Data/System の sp.txt など）を読む zip。遊ぶときに重ねるものと同じ */
+  systemArchives: string[];
+  error?: string; saved?: boolean; turnstileKey?: string; directUpload: boolean;
 }) {
+  const resource = props.kind === 'resource';
+  const noun = resource ? '素材' : 'シナリオ';
   const latestPublished = props.versions.find(v => v.state === 'published');
   const requires = latestPublished ? JSON.parse(latestPublished.requires) as string[] : [];
   const excludes = latestPublished ? JSON.parse(latestPublished.excludes) as string[] : [];
-  // lint が汎用データ（Data/System の sp.txt など）を読むパック。遊ぶときに重ねるものと同じ
-  const systemArchives = resolveRequires(props.packs as PackRow[], requires, excludes)
-    .map(id => props.packs.find(p => p.id === id)!)
-    .map(p => `/files/packs/${p.id}/${p.version}.zip`);
   return (
     <>
       <section>
         <h1>{props.v.title} の編集</h1>
-        <p><a href={`/scenarios/${props.slug}`}>シナリオの頁へ</a></p>
+        <p><a href={itemPath({ kind: props.kind, slug: props.slug })}>{noun}の頁へ</a></p>
         {props.error && <Notice kind="error">{props.error}</Notice>}
         {props.saved && <Notice>保存しました。</Notice>}
       </section>
       <section>
         <h2>新しい版を上げる</h2>
-        <p>シナリオのフォルダを zip にしたものを選んでください（1 GB まで）。上げる前に、ブラウザの中で zip の中身（.eve があるか、実行ファイルが無いか など）を確かめます。上げると、すぐに公開されます。</p>
-        <p>あわせて、データ・イベントの書き方（srcsharp lint と同じ検査）、Call の飛び先のラベルや include するファイルがあるか、画像・音などの素材のファイルがあるかを確かめられます。どこまで確かめるかは下で選べます。素材が無いことは知らせるだけで、上げるのは止めません。</p>
-        <form id="upload" class="form" data-slug={props.slug} data-direct={props.directUpload ? '1' : '0'} data-system-archives={JSON.stringify(systemArchives)}>
+        {resource ? (
+          <p>素材を SRC のフォルダの形（<code>Bitmap/…</code>・<code>Sound/…</code>・<code>Midi/…</code>・<code>Data/…</code>）にして zip にしたものを選んでください（1 GB まで）。上げる前に、ブラウザの中で zip の中身（実行ファイルが無いか など）を確かめます。上げると、すぐにパックに入ります。</p>
+        ) : (
+          <>
+            <p>シナリオのフォルダを zip にしたものを選んでください（1 GB まで）。上げる前に、ブラウザの中で zip の中身（.eve があるか、実行ファイルが無いか など）を確かめます。上げると、すぐに公開されます。</p>
+            <p>あわせて、データ・イベントの書き方（srcsharp lint と同じ検査）、Call の飛び先のラベルや include するファイルがあるか、画像・音などの素材のファイルがあるかを確かめられます。どこまで確かめるかは下で選べます。素材が無いことは知らせるだけで、上げるのは止めません。</p>
+          </>
+        )}
+        <form id="upload" class="form" data-slug={props.slug} data-kind={props.kind} data-direct={props.directUpload ? '1' : '0'} data-system-archives={JSON.stringify(props.systemArchives)}>
           <input type="file" name="file" accept=".zip,application/zip" required />
           <label>この版の説明（任意）<input name="note" maxlength={200} /></label>
-          <label>上げる前の確かめ
+          <label hidden={resource}>上げる前の確かめ
             <select name="lintLevel">
               <option value="stop">問題があれば止める（確かめてから上げる）</option>
               <option value="warn">問題を表示して、そのまま上げる</option>
               <option value="off">確かめない</option>
             </select>
           </label>
-          <label class="check"><input type="checkbox" name="lintAssets" checked /> 素材（画像・音・マップ）のファイルがあるかも見る（知らせるだけ）</label>
+          <label class="check" hidden={resource}><input type="checkbox" name="lintAssets" checked /> 素材（画像・音・マップ）のファイルがあるかも見る（知らせるだけ）</label>
           <Turnstile siteKey={props.turnstileKey} />
           <button type="submit">上げる</button>
           <progress hidden max={100} value={0}></progress>
@@ -297,7 +427,7 @@ export function EditPage(props: {
                 {v.state === 'published' && (
                   <form method="post" action={`/my/versions/${v.id}/settings`} class="compact">
                     <label>フォルダ（root）<input name="root" value={v.root ?? ''} /></label>
-                    <label>最初の .eve<input name="eve" value={v.eve ?? ''} /></label>
+                    {resource ? <input type="hidden" name="eve" value="" /> : <label>最初の .eve<input name="eve" value={v.eve ?? ''} /></label>}
                     <button type="submit">変える</button>
                   </form>
                 )}
@@ -306,7 +436,7 @@ export function EditPage(props: {
           </ul>
         )}
       </section>
-      {latestPublished && (
+      {latestPublished && !resource && (
         <section>
           <h2>一緒に使う共有パック（最新の版）</h2>
           <form method="post" action={`/my/versions/${latestPublished.id}/packs`} class="form">
@@ -321,15 +451,16 @@ export function EditPage(props: {
         </section>
       )}
       <section>
-        <h2>シナリオの情報</h2>
+        <h2>{noun}の情報</h2>
         <form method="post" action={`/my/scenarios/${props.slug}`} class="form">
-          <ScenarioFields v={props.v} isNew={false} />
+          {resource && <PackChoice packs={props.communityPacks} selected={props.v.pack} isNew={false} />}
+          <ScenarioFields v={props.v} isNew={false} resource={resource} />
           <button type="submit">保存</button>
         </form>
       </section>
       <section>
-        <h2>シナリオを消す</h2>
-        <form method="post" action={`/my/scenarios/${props.slug}/delete`} onsubmit="return confirm('シナリオとすべての版を消します。よろしいですか？')">
+        <h2>{noun}を消す</h2>
+        <form method="post" action={`/my/scenarios/${props.slug}/delete`} onsubmit={`return confirm('${noun}とすべての版を消します。よろしいですか？')`}>
           <button type="submit" class="danger">消す</button>
         </form>
       </section>
@@ -341,32 +472,77 @@ const STATE_LABELS: Record<string, string> = {
   uploading: 'アップロード中', inspecting: '検査中', published: '公開', rejected: '弾かれた', withdrawn: '取り下げ',
 };
 
-export function PacksPage(props: { packs: { id: string; title: string; source_name: string; size: number; is_default: number; withdrawn: number }[] }) {
+export function PacksPage(props: { packs: { id: string; title: string; source_name: string; size: number; is_default: number; withdrawn: number; kind: string; policy: string | null; members: number }[] }) {
+  const list = (packs: typeof props.packs) => (
+    <ul class="scenario-list">
+      {packs.map(p => (
+        <li>
+          <a class="title" href={`/packs/${p.id}`}>{p.title}</a>
+          <span class="list-badges">
+            {p.is_default ? <span class="badge">既定</span> : null}
+            {p.withdrawn ? <span class="badge stopped">取り下げ</span> : null}
+          </span>
+          <div class="meta">{p.kind === 'community' ? <>管理ポリシー: {policyOf(p.policy)?.title ?? p.policy} ・ 素材 {p.members} 件</> : <>{p.source_name} ・ {formatSize(p.size)}</>}</div>
+        </li>
+      ))}
+    </ul>
+  );
   return (
     <section>
       <h1>共有パック</h1>
-      <p>シナリオと一緒に読み込んで使う素材です。「既定」のものはすべてのシナリオで使います（投稿者が外せます）。</p>
-      <ul class="scenario-list">
-        {props.packs.map(p => (
-          <li>
-            <a class="title" href={`/packs/${p.id}`}>{p.title}</a>
-            <span class="list-badges">
-              {p.is_default ? <span class="badge">既定</span> : null}
-              {p.withdrawn ? <span class="badge stopped">取り下げ</span> : null}
-            </span>
-            <div class="meta">{p.source_name} ・ {formatSize(p.size)}</div>
-          </li>
-        ))}
-      </ul>
+      <p>シナリオと一緒に読み込んで使う素材です。「既定」のものはすべてのシナリオで使います（投稿者が外せます）。中身は<a href="/viewer/archives">データビューア</a>で見たり聞いたりできます。</p>
+      <h2>サイトが配るパック</h2>
+      {list(props.packs.filter(p => p.kind !== 'community'))}
+      <h2>投稿素材のパック</h2>
+      <p>利用者が投稿した素材を、管理ポリシーごとにまとめたパックです。シナリオの投稿者が選んだシナリオで使います。<a href="/my/resources/new">素材を投稿する</a></p>
+      {list(props.packs.filter(p => p.kind === 'community'))}
     </section>
   );
 }
 
 export function PackPage(props: {
-  p: { id: string; title: string; description: string | null; source_name: string; source_url: string | null; license: string; size: number; version: string; is_default: number; withdrawn: number; updated_at: number };
+  p: { id: string; title: string; description: string | null; source_name: string; source_url: string | null; license: string; size: number; version: string; is_default: number; withdrawn: number; updated_at: number; kind: string; policy: string | null };
   takedowns: { target_id: string; reason: string; created_at: number }[];
+  members: MemberRow[];
 }) {
   const p = props.p;
+  if (p.kind === 'community') {
+    const policy = policyOf(p.policy);
+    return (
+      <section>
+        <h1>{p.title}</h1>
+        {p.withdrawn ? <Notice kind="error">配布を止めています。</Notice> : null}
+        {p.description && <p class="pre">{p.description}</p>}
+        {!p.withdrawn && (
+          <div class="actions">
+            <a class="button primary" href={`/my/resources/new?pack=${encodeURIComponent(p.id)}`}>このパックに素材を投稿する</a>
+            <a class="button" href={viewerUrl(p.id)}>データビューアで見る</a>
+          </div>
+        )}
+        <dl>
+          <dt>管理ポリシー</dt><dd>{policy?.title ?? p.policy}</dd>
+          <dt>条件</dt><dd class="pre">{p.license}</dd>
+          <dt>既定</dt><dd>{p.is_default ? 'すべてのシナリオで使う' : '投稿者が選んだシナリオだけで使う'}</dd>
+        </dl>
+        <h2>素材（{props.members.length} 件）</h2>
+        <p class="muted small">SRC#Web は上から順に重ねます。同じ名前のファイルは、下にある（先に投稿された）素材のものが使われます。</p>
+        {props.members.length === 0 ? <p class="muted">まだありません。</p> : (
+          <ul class="scenario-list">
+            {props.members.map(m => (
+              <li>
+                <a class="title" href={`/resources/${m.slug}`}>{m.title}</a>
+                <div class="meta">{m.author && <>{m.author} ・ </>}第 {m.number} 版 ・ {formatSize(m.size)} ・ <a href={viewerUrl(memberId(m.slug))}>データビューアで見る</a></div>
+              </li>
+            ))}
+          </ul>
+        )}
+        <h2>取り下げた記録</h2>
+        {props.takedowns.length === 0 ? <p class="muted">ありません。</p> : (
+          <ul>{props.takedowns.map(t => <li>{formatDate(t.created_at)} {t.target_id}: {t.reason}</li>)}</ul>
+        )}
+      </section>
+    );
+  }
   return (
     <section>
       <h1>{p.title}</h1>
@@ -375,6 +551,7 @@ export function PackPage(props: {
       {!p.withdrawn && (
         <div class="actions">
           <a class="button" href={`/files/packs/${p.id}/${p.version}.zip`} download={`${p.id}.zip`}>ダウンロード（{formatSize(p.size)}）</a>
+          <a class="button" href={viewerUrl(p.id)}>データビューアで見る</a>
         </div>
       )}
       <dl>

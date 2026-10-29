@@ -1,7 +1,7 @@
 // JSON の API（カタログ・投稿）
 import { Hono } from 'hono';
 import type { AppEnv } from '../env';
-import { catalog, PLAYABLE_SELECT, type PackRow, type PlayableRow } from '../lib/catalog';
+import { catalog, loadPacks, PLAYABLE_SELECT, type PlayableRow } from '../lib/catalog';
 import { verifyTurnstile } from '../lib/turnstile';
 import { canPresign, completeMultipartUpload, createMultipartUpload, presignUploadPart, UPLOAD_CONTENT_TYPE } from '../lib/presign';
 import { now, today } from '../lib/util';
@@ -27,10 +27,6 @@ export function partLength(size: number, partNumber: number): number {
 const MAX_TOTAL_PER_USER = 5 * 1024 * 1024 * 1024;
 const MAX_VERSIONS_PER_DAY = 10;
 
-async function packs(db: D1Database): Promise<PackRow[]> {
-  return (await db.prepare('SELECT * FROM packs').all<PackRow>()).results;
-}
-
 function catalogHeaders(c: { header: (k: string, v: string) => void }) {
   c.header('Cache-Control', 'public, max-age=60');
   c.header('Cross-Origin-Resource-Policy', 'same-origin');
@@ -39,8 +35,9 @@ function catalogHeaders(c: { header: (k: string, v: string) => void }) {
 // SRC#Web が読むカタログ（一覧に出す公開のシナリオ）
 api.get('/catalog.json', async c => {
   const rows = (await c.env.DB.prepare(`${PLAYABLE_SELECT} AND s.visibility = 'public' ORDER BY s.updated_at DESC`).all<PlayableRow>()).results;
+  const { packs, members } = await loadPacks(c.env.DB);
   catalogHeaders(c);
-  return c.json(catalog(c.env.SITE_NAME, rows, await packs(c.env.DB)));
+  return c.json(catalog(c.env.SITE_NAME, rows, packs, members));
 });
 
 // 1 本だけのカタログ（SRC#Web の ?play= で開くとき。限定公開も含む）
@@ -57,7 +54,8 @@ api.get('/catalog/:file', async c => {
   c.executionCtx.waitUntil(count(c.env.DB, slug, 'plays'));
   catalogHeaders(c);
   c.header('Cache-Control', 'private, max-age=0');
-  return c.json(catalog(c.env.SITE_NAME, [row], await packs(c.env.DB)));
+  const { packs, members } = await loadPacks(c.env.DB);
+  return c.json(catalog(c.env.SITE_NAME, [row], packs, members));
 });
 
 export async function count(db: D1Database, slug: string, column: 'plays' | 'downloads') {

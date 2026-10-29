@@ -9,6 +9,7 @@ import { pages } from './routes/pages';
 import { api } from './routes/api';
 import { files } from './routes/files';
 import { admin } from './routes/admin';
+import { viewer } from './routes/viewer';
 
 const app = new Hono<AppEnv>();
 
@@ -56,7 +57,7 @@ app.on(['GET', 'HEAD'], '/play/*', async c => {
 app.on(['GET', 'HEAD'], '/static/*', c => c.env.ASSETS.fetch(c.req.raw));
 // ブラウザで動く lint（7474/SRC の SRCLintWeb。スレッドを使わないのでクロスオリジン分離は要らない）。投稿の画面が読み込む
 app.on(['GET', 'HEAD'], '/lint/*', c => c.env.ASSETS.fetch(c.req.raw));
-// データビューア（7474/SRC の SRCTestBlazor）。データは 7474/SRC-Data（GitHub）からブラウザが読む
+// データビューア（7474/SRC の SRCTestBlazor）。データは 7474/SRC-Data（GitHub）と、このサイトの公開している zip（/api/viewer/）からブラウザが読む
 app.get('/viewer', c => c.redirect('/viewer/'));
 app.on(['GET', 'HEAD'], '/viewer/*', async c => {
   // index.html は /viewer/ への転送にせず、そのまま返す（Service Worker が転送された応答をキャッシュすると、頁を開けなくなる）
@@ -108,6 +109,7 @@ app.use('*', async (c, next) => {
 });
 
 app.route('/auth', auth);
+app.route('/api/viewer', viewer);
 app.route('/api', api);
 app.route('/admin', admin);
 app.route('/', files);

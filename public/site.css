@@ -121,8 +121,9 @@ button.danger { color: var(--error); border-color: var(--error); }
 button:disabled { opacity: 0.5; cursor: default; }
 input, select, textarea { font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--text); max-width: 100%; }
 .form label, form label { display: block; margin: 10px 0; }
-.form label input:not([type=checkbox]), .form label textarea, .form label select { display: block; width: 100%; margin-top: 4px; }
+.form label input:not([type=checkbox]):not([type=radio]), .form label textarea, .form label select { display: block; width: 100%; margin-top: 4px; }
 label.check { display: flex; gap: 8px; align-items: baseline; }
+.pack-choice { border: 1px solid var(--line); border-radius: 8px; margin: 10px 0; }
 form.inline { display: inline; }
 form.compact { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 form.compact label { margin: 0; }

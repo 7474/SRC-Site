@@ -1,6 +1,6 @@
 # SRC-Site 設計
 
-[構成案](design.md) と [アセットの整理](assets.md) の方針で、具体的な構成を決める。
+[構成案](design.md) と [アセットの整理](assets.md) の方針で、具体的な構成を決める。素材の投稿と閲覧（投稿素材のパック・データビューア）は [素材の投稿と閲覧](resources.md) にまとめた。
 
 ## 決めたこと
 
@@ -85,7 +85,7 @@ src-site/
 
 | 区分 | 中身 | 認証 | キャッシュ |
 |---|---|---|---|
-| `/`・`/scenarios/`・`/users/`・`/packs/`・`/about/` | 公開の画面 | 不要 | `private, no-store` |
+| `/`・`/scenarios/`・`/resources/`・`/users/`・`/packs/`・`/about/` | 公開の画面 | 不要 | `private, no-store` |
 | `/my/` | 本人の画面（設定・投稿・編集） | 要 | `private, no-store` |
 | `/admin/` | 運営の画面 | 運営 | `private, no-store` |
 | `/auth/` | ログイン | ― | ― |
@@ -94,7 +94,7 @@ src-site/
 | `/play/` | SRC#Web（クロスオリジン分離） | 不要 | 静的アセット |
 | `/lint/` | ブラウザで動く lint（7474/SRC の SRCLintWeb） | 不要 | 静的アセット |
 | `/check` | データ・シナリオのチェッカー。選ぶかドロップした zip・フォルダ・ファイルを、投稿と同じ検査（zip の目次の規則・srcsharp lint・静的解析・素材の参照）にかける。中身（シナリオか、データだけか）に合わせて確かめる。ファイルはブラウザの外に出さない（`public/check.js`）。手元の SRC 本体・データパックを依存データとして足せる（System の .txt・Lib の .eve の中身と、ほかのファイルの名前だけをブラウザの IndexedDB `srcsite-check` に覚え、汎用データに重ねる）。SRC#Web（`/play/`）に追加した素材（IndexedDB `srcweb` の `archives` の `asset`）も、データベースがあるときだけ読み取り専用で開いて依存データにできる。汎用データが足りないと出る問題（スペシャルパワー・ラベル・include）は名前をまとめて案内する。確かめ方（パック・素材）は `localStorage` に覚える | 不要 | ― |
-| `/viewer/` | データビューア（7474/SRC の SRCTestBlazor。srcv.7474.jp と同じもの）。データは 7474/SRC-Data（GitHub）からブラウザが読む。頁の中の道は `index.html` を返す | 不要 | 静的アセット |
+| `/viewer/` | データビューア（7474/SRC の SRCTestBlazor。srcv.7474.jp と同じもの）。データは 7474/SRC-Data（GitHub）と、このサイトの公開している zip（`viewer.json` で `/api/viewer/index.json` を読む。[素材の投稿と閲覧](resources.md)）からブラウザが読む。頁の中の道は `index.html` を返す | 不要 | 静的アセット |
 | `/static/` | ポータルの CSS・JS | 不要 | 静的アセット |
 
 ### 公開の画面
@@ -104,9 +104,10 @@ src-site/
 | `GET /` | 新着・検索（`?q=`。題名・作者・タグ・ハンドル） |
 | `GET /scenarios/:slug` | シナリオの詳細（説明・版・必要なパック・プレイ・ダウンロード・通報のフォームへのリンク） |
 | `GET /scenarios/:slug/download` | 最新版の zip（`Content-Disposition: attachment`） |
+| `GET /resources/:slug` | 素材の詳細（投稿先のパックと管理ポリシー・中身・データビューアへのリンク） |
 | `GET /users/:handle` | 投稿者の頁 |
 | `GET /packs` | 共有パックの一覧 |
-| `GET /packs/:id` | 共有パックの頁（出典・条件・取り下げの記録） |
+| `GET /packs/:id` | 共有パックの頁（出典・条件・取り下げの記録。投稿素材のパックは中の素材） |
 | `GET /about/terms` | 規約 |
 | `GET /about/rights` | 権利者の方へ（申し出の窓口・取り下げの記録） |
 | `GET /play/?play=:slug` | SRC#Web でそのシナリオを始める |
@@ -117,6 +118,7 @@ src-site/
 |---|---|
 | `GET /my` `POST /my` | 設定（ハンドル・規約への同意）と自分のシナリオの一覧 |
 | `GET /my/scenarios/new` `POST /my/scenarios/new` | シナリオを作る |
+| `GET /my/resources/new` `POST /my/resources/new` | 素材を作る（投稿先のパックとポリシーへの同意）。版を上げる・直す・消すはシナリオと同じ `/my/scenarios/:slug` |
 | `GET /my/scenarios/:slug` `POST /my/scenarios/:slug` | シナリオを直す・版を上げる |
 | `POST /my/scenarios/:slug/delete` | シナリオを消す |
 | `POST /my/versions/:id/settings` | 版の `root`・`eve` を直す |
@@ -147,7 +149,10 @@ src-site/
 | `GET /api/catalog/:slug.json` | 1 本のシナリオと、それが使うパックのカタログ（SRC#Web の `playCatalog`） |
 | `POST /api/scenarios/:slug/versions` ほか | 投稿の API（下の「投稿」） |
 | `GET /files/scenarios/:slug/:number.zip` | シナリオの版の zip（R2。Range・ETag） |
+| `GET /files/resources/:slug/:number.zip` | 素材の版の zip（R2。Range・ETag） |
 | `GET /files/packs/:id/:version.zip` | 共有パックの zip（R2。Range・ETag） |
+| `GET /files/<scenarios・resources・packs>/:id/:version/<道>` | zip の中のファイルを 1 つ（データビューア。[素材の投稿と閲覧](resources.md)） |
+| `GET /api/viewer/index.json`・`GET /api/viewer/archives/…` | データビューアが読む zip の一覧と、zip の中のファイルの一覧 |
 
 - クロスオリジン分離（COOP・COEP）は `/play/` だけ。ポータルの画面は外部の画像（Google のアイコンなど）を出すので分離しない
 - zip の URL は版を含めて不変にし、長くキャッシュする（版を変えると URL が変わる）
@@ -210,6 +215,8 @@ CREATE TABLE scenarios (
   license        TEXT,                    -- 再配布の条件など、投稿者が書く
   tags           TEXT,                    -- JSON の配列
   visibility     TEXT NOT NULL DEFAULT 'public',  -- 'public' | 'unlisted' | 'hidden'（運営が止めた）
+  kind           TEXT NOT NULL DEFAULT 'scenario', -- 'scenario' | 'resource'（共有パックに投稿した素材）
+  pack_id        TEXT REFERENCES packs(id),       -- 素材の投稿先のパック
   latest_version INTEGER,
   created_at     INTEGER NOT NULL,
   updated_at     INTEGER NOT NULL
@@ -246,7 +253,9 @@ CREATE TABLE packs (
   priority    INTEGER NOT NULL DEFAULT 0, -- 重ねる順（大きいほど後＝優先）
   version     TEXT NOT NULL,              -- zip の版（sha256 の先頭など）
   r2_key      TEXT NOT NULL,
-  size        INTEGER NOT NULL
+  size        INTEGER NOT NULL,
+  kind        TEXT NOT NULL DEFAULT 'site',  -- 'site'（配布物から作る zip）| 'community'（投稿した素材を集めたもの。zip を持たない）
+  policy      TEXT                           -- community の管理ポリシー（'free' | 'credit' | 'individual'）
 );
 
 -- 取り下げ（パックのファイル単位、シナリオの版単位）
@@ -374,7 +383,7 @@ flowchart TB
 }
 ```
 
-- `requires` は「サイトの既定のパック（`is_default`）− 投稿者が外したもの（`excludes`）＋ 投稿者が足したもの（`requires`）」を、`priority` の順に並べる
+- `requires` は「サイトの既定のパック（`is_default`）− 投稿者が外したもの（`excludes`）＋ 投稿者が足したもの（`requires`）」を、`priority` の順に並べる。投稿素材のパックは中の素材（`resource.<slug>`）に展開する（[素材の投稿と閲覧](resources.md)）
 - `/play/srcweb.json`: `title: "SRC-Site"`、`catalogs: ["/api/catalog.json"]`、`allowUserArchives: true`、`allowUserCatalogs: false`（他のサイトのカタログは読ませない）
 - カタログが大きくなったら、`/api/catalog.json` は一覧用の軽いものにし、`?play=<slug>` で開くときは `/api/catalog/<slug>.json`（そのシナリオと要るパックだけ）を読む形にする（SRC#Web の変更）
 
@@ -391,6 +400,7 @@ flowchart TB
 | `soundfont` | MIDI の SoundFont（TimGM6mb、GPL-2.0） | 既定 | Debian のパッケージ |
 | `gsc-graphic-marunage` | GSC の画像パック（丸投げ） | 投稿者が選ぶ | SRC 総合支援センター |
 | `gsc-data` | GSC のデータパック（ロボ・拡張） | 投稿者が選ぶ | 同 |
+| `user-free`・`user-credit`・`user-individual` | 利用者が投稿した素材（管理ポリシーごと） | 投稿者が選ぶ | 投稿者（[素材の投稿と閲覧](resources.md)） |
 
 - パックは `packs/<id>.json`（出典・条件・元の配布物の URL と sha256・取り出すパス）で定義し、`.github/workflows/packs.yml` が元の配布物を取ってきて zip を作り、R2 に置き、D1 の `packs` を更新する（src-host の upload-content と同じ形）
 - 取り下げたファイル（`takedowns` の `pack_file`）は、zip を作るときに除く。版が変わるので SRC#Web は取り直す

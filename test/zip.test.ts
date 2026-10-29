@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { crc32 } from 'node:zlib';
-import { extractEntry, inspect, readEntries, type RangeReader } from '../src/lib/zip';
+import { extractEntry, findEntry, inspect, mediaKind, readEntries, type RangeReader } from '../src/lib/zip';
 
 // 無圧縮の zip を作る（テスト用）
 function makeZip(files: { name: string | Uint8Array; data: Uint8Array; utf8?: boolean; flags?: number; size?: number }[]): Uint8Array {
@@ -125,5 +125,38 @@ describe('extractEntry', () => {
     expect(entries[1].offset).toBeGreaterThan(0);
     expect(new TextDecoder().decode(await extractEntry(r, entries[0]))).toBe('集中');
     expect(new TextDecoder().decode(await extractEntry(r, entries[1]))).toBe('BM');
+  });
+});
+
+describe('素材（resource）の検査', () => {
+  const entries = async (names: string[]) => readEntries(reader(makeZip(names.map(name => ({ name, data: text('x') })))));
+
+  it('.eve が無くてよく、種類ごとの数を数える', async () => {
+    const result = inspect(await entries(['Bitmap/Pilot/a.bmp', 'Bitmap/Unit/b.png', 'Sound/c.wav', 'Midi/d.mid', 'Data/pilot.txt']), 'resource');
+    expect(result).toMatchObject({ ok: true, root: null, eve: null });
+    expect(result.ok && result.manifest.media).toEqual({ image: 2, audio: 1, midi: 1, data: 1 });
+  });
+
+  it('SRC のフォルダ（Bitmap など）だけなら root にしない。ほかの 1 つのフォルダなら root にする', async () => {
+    expect(inspect(await entries(['Bitmap/Pilot/a.bmp', 'Bitmap/Unit/b.bmp']), 'resource')).toMatchObject({ ok: true, root: null });
+    expect(inspect(await entries(['素材集/Bitmap/Pilot/a.bmp', '素材集/Sound/b.wav']), 'resource')).toMatchObject({ ok: true, root: '素材集' });
+  });
+
+  it('シナリオは今までどおり .eve が要る。素材でも実行ファイルは弾く', async () => {
+    expect(inspect(await entries(['Bitmap/Pilot/a.bmp']))).toMatchObject({ ok: false });
+    expect(inspect(await entries(['Bitmap/Pilot/a.bmp', 'tool.exe']), 'resource')).toMatchObject({ ok: false });
+  });
+});
+
+describe('mediaKind・findEntry', () => {
+  it('拡張子で種類を決める', () => {
+    expect(['a.BMP', 'b.wav', 'c.mid', 'Data/robot.txt', 'readme.txt', 'x.eve', 'y.map', 'z.lzh'].map(mediaKind))
+      .toEqual(['image', 'audio', 'midi', 'data', 'document', 'event', 'map', 'other']);
+  });
+
+  it('区切りと大文字小文字を区別せずに探す', async () => {
+    const list = await readEntries(reader(makeZip([{ name: 'Pack\\Bitmap\\Pilot\\Hero.BMP', data: text('BM') }])));
+    expect(findEntry(list, 'pack/bitmap/pilot/hero.bmp')?.name).toBe('Pack\\Bitmap\\Pilot\\Hero.BMP');
+    expect(findEntry(list, 'pack/bitmap/pilot/other.bmp')).toBeUndefined();
   });
 });

@@ -53,8 +53,8 @@ with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as z:
   return readFileSync(out);
 }
 
-async function upload(agent, data) {
-  let res = await agent.req(`/api/scenarios/${slug}/versions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ size: data.length }) });
+async function upload(agent, data, target = slug) {
+  let res = await agent.req(`/api/scenarios/${target}/versions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ size: data.length }) });
   assert.equal(res.status, 200, await res.clone().text());
   const created = await res.json();
   assert.equal(created.parts, Math.ceil(data.length / created.partSize));
@@ -175,6 +175,67 @@ step('運営が止める → 再開');
 
 res = await visitor.req('/admin');
 assert.equal(res.status, 404, '運営の頁は運営だけ');
+
+// 素材を投稿素材のパックに投稿し、シナリオで使う（docs/resources.md）
+const resSlug = slug + '-res';
+res = await alice.form('/my/resources/new', { slug: resSlug, title: 'スモークの素材', pack: 'user-free', visibility: 'public' });
+assert.equal(res.status, 400, '管理ポリシーへの同意が要る');
+res = await alice.form('/my/resources/new', { slug: resSlug, title: 'スモークの素材', pack: 'user-free', agree: '1', visibility: 'public' });
+assert.equal(res.headers.get('Location'), `/my/scenarios/${resSlug}`);
+const bmp = Buffer.from('424d3a0000000000000036000000280000000100000001000000010018000000000004000000130b0000130b00000000000000000000ff000000', 'hex');
+const resourceZip = (() => {
+  const out = join(mkdtempSync(join(tmpdir(), 'smoke-')), 'resource.zip');
+  execFileSync('python3', ['-I', '-c', `
+import sys, zipfile
+with zipfile.ZipFile(sys.argv[1], 'w', zipfile.ZIP_DEFLATED) as z:
+    z.writestr('Bitmap/Pilot/スモーク.bmp', bytes.fromhex(sys.argv[2]))
+    z.writestr('Sound/smoke.wav', b'RIFF' + bytes(100))
+`, out, bmp.toString('hex')]);
+  return readFileSync(out);
+})();
+v = await upload(alice, resourceZip, resSlug);
+assert.equal(v.state, 'published', v.note);
+res = await visitor.req(`/scenarios/${resSlug}`);
+assert.equal(res.headers.get('Location'), `/resources/${resSlug}`, '素材の頁へ移す');
+res = await visitor.req(`/resources/${resSlug}`);
+assert.match(await res.text(), /投稿素材（自由）/);
+assert.match(await (await visitor.req('/packs/user-free')).text(), new RegExp(resSlug));
+step('素材の投稿（.eve なし）と素材・パックの頁');
+
+const edit = await (await alice.req(`/my/scenarios/${slug}`)).text();
+const versionId = /\/my\/versions\/(\d+)\/packs/.exec(edit)[1];
+res = await alice.req(`/my/versions/${versionId}/packs`, { method: 'POST', body: new URLSearchParams([['pack', 'user-free']]) });
+assert.equal(res.status, 302);
+catalog = await (await visitor.req(`/api/catalog/${slug}.json`)).json();
+assert.deepEqual(catalog.entries[0].requires, [`resource.${resSlug}`]);
+const asset = catalog.entries.find(e => e.id === `resource.${resSlug}`);
+assert.equal(asset.kind, 'asset');
+assert.equal((await visitor.req(asset.archive)).status, 200);
+step('シナリオが投稿素材のパックを使う（カタログの requires に素材が入る）');
+
+const index = await (await visitor.req('/api/viewer/index.json')).json();
+const archive = index.archives.find(a => a.id === `resource.${resSlug}`);
+assert.equal(archive.pack, 'user-free');
+assert.ok(index.archives.find(a => a.id === 'user-free').members.includes(`resource.${resSlug}`));
+assert.deepEqual(index.archives.find(a => a.id === slug).requires, [`resource.${resSlug}`]);
+const list = await (await visitor.req(archive.files)).json();
+assert.deepEqual(list.files.map(f => f.path).sort(), ['Bitmap/Pilot/スモーク.bmp', 'Sound/smoke.wav']);
+res = await visitor.req(archive.base + encodeURI('bitmap/pilot/スモーク.bmp'));
+assert.equal(res.status, 200);
+assert.equal(res.headers.get('Content-Type'), 'image/bmp');
+assert.deepEqual(Buffer.from(await res.arrayBuffer()), bmp);
+res = await visitor.req(archive.base + 'Sound/smoke.wav', { headers: { Range: 'bytes=0-3' } });
+assert.equal(res.status, 206);
+assert.equal(Buffer.from(await res.arrayBuffer()).toString(), 'RIFF');
+assert.equal((await visitor.req(archive.base + 'Sound/none.wav')).status, 404);
+assert.equal((await visitor.req(archive.base + '../x')).status, 404);
+step('データビューアの一覧・目次・zip の中のファイル（画像・Range）');
+
+res = await alice.form(`/my/scenarios/${resSlug}/delete`, {});
+assert.equal(res.status, 302);
+catalog = await (await visitor.req(`/api/catalog/${slug}.json`)).json();
+assert.deepEqual(catalog.entries[0].requires, [], '消した素材は重ねない');
+step('素材の削除');
 
 // 複数のパートに分かれる大きさ（Worker を通したマルチパートアップロード）
 const large = zipFolder(folder, undefined, 70 * 1024 * 1024);
