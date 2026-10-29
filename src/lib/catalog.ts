@@ -51,7 +51,16 @@ export function scenarioEntry(row: PlayableRow, packs: PackRow[]): CatalogEntry 
 }
 
 export function packEntry(p: PackRow): CatalogEntry {
-  const entry: CatalogEntry = { id: p.id, kind: 'asset', title: p.title, archive: `/files/packs/${p.id}/${p.version}.zip`, version: p.version };
+  const entry: CatalogEntry = {
+    id: p.id,
+    kind: 'asset',
+    title: p.title,
+    author: p.source_name,
+    license: p.license,
+    archive: `/files/packs/${p.id}/${p.version}.zip`,
+    version: p.version,
+  };
+  if (p.description) entry.description = p.description;
   if (p.root) entry.root = p.root;
   return entry;
 }

@@ -35,13 +35,20 @@ describe('resolveRequires', () => {
 
 describe('packCatalog', () => {
   it('lists every available pack as a same-origin asset archive and omits withdrawn packs', () => {
-    const result = packCatalog('Site', [pack('basic', 1, 0), pack('gsc', 0, 10), pack('removed', 0, 20, 1)]);
+    const basic = { ...pack('basic', 1, 0), source_name: 'SRC community', license: 'CC0-1.0', description: 'Basic data', root: 'Data' };
+    const result = packCatalog('Site', [basic, pack('gsc', 0, 10), pack('removed', 0, 20, 1)]);
     expect(result).toEqual({
       format: 1,
       name: 'Site',
       entries: [
-        { id: 'basic', kind: 'asset', title: 'basic', archive: '/files/packs/basic/v1.zip', version: 'v1' },
-        { id: 'gsc', kind: 'asset', title: 'gsc', archive: '/files/packs/gsc/v1.zip', version: 'v1' },
+        {
+          id: 'basic', kind: 'asset', title: 'basic', author: 'SRC community', license: 'CC0-1.0',
+          description: 'Basic data', archive: '/files/packs/basic/v1.zip', version: 'v1', root: 'Data',
+        },
+        {
+          id: 'gsc', kind: 'asset', title: 'gsc', author: 's', license: 'l',
+          archive: '/files/packs/gsc/v1.zip', version: 'v1',
+        },
       ],
     });
     expect(result.entries.every(entry => entry.archive.startsWith('/'))).toBe(true);
