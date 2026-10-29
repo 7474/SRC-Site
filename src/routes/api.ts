@@ -167,10 +167,10 @@ async function ownPackSubmission(c: Context<AppEnv>, id: string): Promise<PackSu
     return null;
   }
   return c.env.DB.prepare('SELECT * FROM pack_submissions WHERE id = ? AND owner_id = ?')
-    .bind(submissionId, c.get('user').id).first<PackSubmissionRow>();
+    .bind(submissionId, c.get('user')!.id).first<PackSubmissionRow>();
 }
 
-async function uploadingPackPart(c: Context<AppEnv>): Promise<{ submission: PackSubmissionRow; part: number } | Response> {
+async function uploadingPackPart(c: Context<AppEnv>): Promise<{ submission: PackSubmissionRow & { upload_id: string }; part: number } | Response> {
   const submission = await ownPackSubmission(c, c.req.param('id'));
   if (!submission || submission.status !== 'uploading' || !submission.upload_id) {
     return c.json({ error: 'パック申請がありません' }, 404);
@@ -231,7 +231,8 @@ api.post('/pack-submissions/:id/complete', async c => {
   if (!submission.upload_id) {
     return c.json({ error: 'アップロードを再開できません。' }, 409);
   }
-  const body = await c.req.json<{ parts?: { partNumber: number; etag: string }[] }>().catch(() => ({}));
+  const body: { parts?: { partNumber: number; etag: string }[] } = await c.req.json<{ parts?: { partNumber: number; etag: string }[] }>()
+    .catch((): { parts?: { partNumber: number; etag: string }[] } => ({}));
   const parts = Array.isArray(body.parts) ? body.parts : [];
   if (parts.length !== partCount(submission.size) || parts.some((p, i) =>
     !p || p.partNumber !== i + 1 || typeof p.etag !== 'string')) {
