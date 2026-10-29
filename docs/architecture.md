@@ -7,7 +7,8 @@
 | 項目 | 決定 |
 |---|---|
 | ログイン | Google（OpenID Connect）。他の提供元は後で足せる形にする |
-| 投稿の公開 | 運営の確認を挟まず、投稿したらすぐ公開する。内容は投稿者の自己責任 |
+| シナリオ投稿の公開 | 運営の確認を挟まず、投稿したらすぐ公開する。内容は投稿者の自己責任 |
+| 利用者が投稿する共有パック | 非公開で受け付け、出典・再配布条件・内容を運営が確認してから公開する |
 | 版権作品のシナリオ | 受け付ける。検閲しない。成人向けのシナリオは当面扱わない（年齢の区分は持たない） |
 | グレーゾーンの素材 | 申し出があるまでは扱う。申し出があれば取り下げる |
 | JASRAC 管理曲 | サイトでは配らない。利用者がブラウザに追加する |
@@ -116,6 +117,7 @@ src-site/
 | パス | 内容 |
 |---|---|
 | `GET /my` `POST /my` | 設定（ハンドル・規約への同意）と自分のシナリオの一覧 |
+| `GET /my/packs` | 共有パックの投稿・申請状態の確認 |
 | `GET /my/scenarios/new` `POST /my/scenarios/new` | シナリオを作る |
 | `GET /my/scenarios/:slug` `POST /my/scenarios/:slug` | シナリオを直す・版を上げる |
 | `POST /my/scenarios/:slug/delete` | シナリオを消す |
@@ -128,6 +130,9 @@ src-site/
 | パス | 内容 |
 |---|---|
 | `GET /admin` | 公開を止めているシナリオ・利用者の一覧、パックの取り下げ |
+| `GET /admin/pack-submissions/:id` | 非公開の共有パック申請を確認する |
+| `GET /admin/pack-submissions/:id/archive` | 確認用 zip（運営だけが取得可能） |
+| `POST /admin/pack-submissions/:id/approve` `POST /admin/pack-submissions/:id/reject` | 確認後に公開する・理由を添えて差し戻す |
 | `POST /admin/scenarios/:slug/hide` `POST /admin/scenarios/:slug/unhide` | 公開を止める・再開する |
 | `POST /admin/users/:id/suspend` `POST /admin/users/:id/unsuspend` | 利用者を止める・戻す |
 | `POST /admin/takedowns` | パック（のファイル）の取り下げを記録する |
@@ -146,6 +151,7 @@ src-site/
 | `GET /api/catalog.json` | 公開中のシナリオと、それらが使うパックのカタログ |
 | `GET /api/catalog/:slug.json` | 1 本のシナリオと、それが使うパックのカタログ（SRC#Web の `playCatalog`） |
 | `POST /api/scenarios/:slug/versions` ほか | 投稿の API（下の「投稿」） |
+| `POST /api/pack-submissions` ほか | 共有パックを非公開領域へマルチパートでアップロードする |
 | `GET /files/scenarios/:slug/:number.zip` | シナリオの版の zip（R2。Range・ETag） |
 | `GET /files/packs/:id/:version.zip` | 共有パックの zip（R2。Range・ETag） |
 
@@ -249,6 +255,28 @@ CREATE TABLE packs (
   size        INTEGER NOT NULL
 );
 
+-- 利用者が投稿し、運営の確認を待つ共有パック
+CREATE TABLE pack_submissions (
+  id              INTEGER PRIMARY KEY,
+  slug            TEXT NOT NULL UNIQUE,
+  owner_id        INTEGER NOT NULL REFERENCES users(id),
+  title           TEXT NOT NULL,
+  description     TEXT,
+  source_name     TEXT NOT NULL,
+  source_url      TEXT,
+  license         TEXT NOT NULL,
+  root            TEXT,
+  excludes_jasrac INTEGER NOT NULL DEFAULT 0,
+  size            INTEGER NOT NULL,
+  r2_key          TEXT NOT NULL,
+  upload_id       TEXT,
+  status          TEXT NOT NULL, -- 'uploading' | 'pending' | 'approved' | 'rejected'
+  review_note     TEXT,
+  reviewed_by     INTEGER REFERENCES users(id),
+  created_at      INTEGER NOT NULL,
+  reviewed_at     INTEGER
+);
+
 -- 取り下げ（パックのファイル単位、シナリオの版単位）
 CREATE TABLE takedowns (
   id          INTEGER PRIMARY KEY,
@@ -280,10 +308,11 @@ CREATE TABLE counters (
 |---|---|---|
 | `staging/<uuid>.zip` | アップロード中・検査中の zip | 検査が済んだら移す。残ったものはライフサイクルで 1 日後に消す |
 | `scenarios/<slug>/<number>.zip` | 公開した版 | 版を消したとき。退会・取り下げは 30 日後 |
+| `pack-submissions/<slug>/<uuid>.zip` | 非公開の共有パック申請 | 承認後は公開パックの参照先として保持。差し戻したら削除 |
 | `packs/<id>/<version>.zip` | 共有パック | 新しい版を作り、古い版を参照するカタログが無くなってから |
 | `web/…` | SRC#Web の 25 MiB を超える発行物（`/play/…` で静的アセットに無いとき返す） | 配信のたびに上書きする |
 
-- 1 つのシナリオの zip は 1 GB まで（ロボッとダンジョンＢ！は約 270 MB）。投稿者ごとの合計は 5 GB まで（後で見直す）
+- シナリオ・共有パックの zip は各 1 GB まで。投稿者ごとの共有パック合計も 5 GB まで
 - バケットの CORS は `https://src.koudenpa.net` と確認のバージョン URL（`https://staging-src-site.koudenpa.workers.dev`）に `PUT` だけを許す（[R2 の CORS](https://developers.cloudflare.com/r2/buckets/cors/)）
 
 ## 投稿
@@ -392,7 +421,9 @@ flowchart TB
 | `gsc-graphic-marunage` | GSC の画像パック（丸投げ） | 投稿者が選ぶ | SRC 総合支援センター |
 | `gsc-data` | GSC のデータパック（ロボ・拡張） | 投稿者が選ぶ | 同 |
 
-- パックは `packs/<id>.json`（出典・条件・元の配布物の URL と sha256・取り出すパス）で定義し、`.github/workflows/packs.yml` が元の配布物を取ってきて zip を作り、R2 に置き、D1 の `packs` を更新する（src-host の upload-content と同じ形）
+- 既存の共有パックは `packs/<id>.json`（出典・条件・元の配布物の URL と sha256・取り出すパス）で定義し、`.github/workflows/packs.yml` が zip を作り R2 と D1 に反映する。利用者の投稿は `pack-submissions/` に非公開で上げ、運営が出典・再配布条件・zip の内容を確認して承認した場合だけ D1 の `packs` に登録する
+- 投稿画面では JASRAC 管理楽曲を含まないことを確認する。承認前に運営も内容を確認する（法律上の判断・利用許諾をサイトが保証するものではない）
+- 投稿 zip の自動検査は行わない。アップロードが 1 日以上中断した申請は片付け、同じ ID・大きさで再送すると中断したアップロードを再開する
 - 取り下げたファイル（`takedowns` の `pack_file`）は、zip を作るときに除く。版が変わるので SRC#Web は取り直す
 - サウンドパック（GSC）・オリジナル BGM パック・JASRAC 管理曲は配らない。利用者が SRC#Web の「素材を追加」で入れる。ポータルのシナリオの頁と SRC#Web に、入手先の案内を出す
 
@@ -417,7 +448,7 @@ flowchart TB
 
 | 対象 | 対策 |
 |---|---|
-| 投稿 | 1 人 1 日 10 版、合計 5 GB まで（D1 で数える）。版の作成に Turnstile |
+| 投稿 | シナリオは 1 人 1 日 10 版・合計 5 GB、共有パックは 1 人 1 日 10 件・合計 5 GB（D1 で数える）。作成に Turnstile |
 | API 全般 | [Rate Limiting](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/) で、ログインしている人は `user:<id>`、していない人はパスごとに 60 秒あたりの回数を決める（数えるのは拠点ごとの近似） |
 | ファイル | 検査の規則（上）。SRC#Web は .eve をブラウザの中で動かすだけで、同梱の HTML はスクリプトを動かさない枠で出す |
 

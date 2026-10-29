@@ -2,7 +2,7 @@
 import { Hono, type Context } from 'hono';
 import type { AppEnv } from '../env';
 import { Layout, Notice } from '../views/layout';
-import { EditPage, Home, MePage, NewScenarioPage, PackPage, PacksPage, ScenarioPage, Simple, UserPage, type ListItem, type ScenarioForm } from '../views/pages';
+import { EditPage, Home, MePage, NewScenarioPage, PackPage, PackSubmissionPage, PacksPage, ScenarioPage, Simple, UserPage, type ListItem, type ScenarioForm } from '../views/pages';
 import { Rights, Terms } from '../views/about';
 import { CheckPage, type CheckPack } from '../views/check';
 import { canEdit, canView, getScenario, LIST_SELECT, requireUser } from './common';
@@ -110,6 +110,23 @@ pages.get('/users/:handle', async c => {
 pages.get('/packs', async c => {
   const packs = (await c.env.DB.prepare('SELECT id, title, source_name, size, is_default, withdrawn FROM packs ORDER BY priority, id').all<any>()).results;
   return render(c, '共有パック', <PacksPage packs={packs} />);
+});
+
+pages.get('/my/packs', requireUser, async c => {
+  const user = c.get('user')!;
+  const submissions = (await c.env.DB.prepare(
+    'SELECT id, slug, title, status, review_note, created_at FROM pack_submissions WHERE owner_id = ? ORDER BY created_at DESC LIMIT 50',
+  ).bind(user.id).all<{
+    id: number; slug: string; title: string; status: string; review_note: string | null; created_at: number;
+  }>()).results;
+  return render(c, '共有パックを投稿', (
+    <PackSubmissionPage
+      submissions={submissions}
+      termsAccepted={Boolean(user.terms_accepted_at)}
+      turnstileKey={c.env.TURNSTILE_SITE_KEY}
+      uploaded={c.req.query('uploaded') === '1'}
+    />
+  ));
 });
 
 pages.get('/packs/:id', async c => {

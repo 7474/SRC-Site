@@ -75,5 +75,34 @@ export async function sweep(env: Bindings): Promise<void> {
     await env.FILES.delete(row.r2_key);
     await env.DB.prepare("UPDATE versions SET state = 'rejected', inspect_note = 'アップロードが完了しませんでした' WHERE id = ?").bind(row.id).run();
   }
+  const abandonedPacks = await env.DB.prepare(
+    "SELECT id, r2_key, upload_id FROM pack_submissions WHERE status = 'uploading' AND created_at < ? LIMIT 100",
+  ).bind(t - 24 * 3600 * 1000).all<{ id: number; r2_key: string; upload_id: string | null }>();
+  for (const row of abandonedPacks.results) {
+    if (row.upload_id) {
+      try {
+        await (canPresign(env)
+          ? abortMultipartUpload(env, row.r2_key, row.upload_id)
+          : env.FILES.resumeMultipartUpload(row.r2_key, row.upload_id).abort());
+      } catch (error) {
+        console.error('pack submission multipart abort failed', error);
+        continue;
+      }
+      await env.DB.prepare("UPDATE pack_submissions SET upload_id = NULL WHERE id = ? AND status = 'uploading'")
+        .bind(row.id).run();
+    }
+    await env.FILES.delete(row.r2_key);
+    await env.DB.prepare(
+      "UPDATE pack_submissions SET status = 'rejected', review_note = 'アップロードが完了しませんでした。もう一度投稿してください。', upload_id = NULL, size = 0, r2_key = '' WHERE id = ? AND status = 'uploading'",
+    ).bind(row.id).run();
+  }
+  const rejectedPacks = await env.DB.prepare(
+    "SELECT id, r2_key FROM pack_submissions WHERE status = 'rejected' AND r2_key != '' LIMIT 100",
+  ).all<{ id: number; r2_key: string }>();
+  for (const row of rejectedPacks.results) {
+    await env.FILES.delete(row.r2_key);
+    await env.DB.prepare("UPDATE pack_submissions SET size = 0, r2_key = '' WHERE id = ? AND status = 'rejected'")
+      .bind(row.id).run();
+  }
   await env.DB.prepare('DELETE FROM sessions WHERE expires_at < ?').bind(t).run();
 }

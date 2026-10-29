@@ -1,9 +1,13 @@
-import { formatDate } from '../lib/util';
+import { formatDate, formatSize } from '../lib/util';
 
 export type HiddenItem = { slug: string; title: string; hidden_reason: string | null };
 export type UserItem = { id: number; handle: string; role: string; suspended: number; created_at: number };
 
-export function AdminPage(props: { users: UserItem[]; hidden: HiddenItem[]; message?: string }) {
+export type PendingPackSubmission = {
+  id: number; slug: string; title: string; source_name: string; license: string; size: number; created_at: number; submitted_by: string;
+};
+
+export function AdminPage(props: { users: UserItem[]; hidden: HiddenItem[]; packSubmissions: PendingPackSubmission[]; message?: string }) {
   return (
     <>
       <section>
@@ -36,6 +40,18 @@ export function AdminPage(props: { users: UserItem[]; hidden: HiddenItem[]; mess
         </form>
       </section>
       <section>
+        <h2>共有パックの確認待ち</h2>
+        {props.packSubmissions.length === 0 ? <p class="muted">ありません。</p> : (
+          <ul>
+            {props.packSubmissions.map(p => (
+              <li>
+                <a href={`/admin/pack-submissions/${p.id}`}>{p.title}</a>（{p.slug}）— 投稿者 {p.submitted_by}・{p.source_name}・{formatSize(p.size)}・{formatDate(p.created_at)}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+      <section>
         <h2>利用者</h2>
         <table>
           <thead><tr><th>表示名</th><th>権限</th><th>登録</th><th></th></tr></thead>
@@ -56,6 +72,50 @@ export function AdminPage(props: { users: UserItem[]; hidden: HiddenItem[]; mess
             ))}
           </tbody>
         </table>
+      </section>
+    </>
+  );
+}
+
+export function PackReviewPage(props: {
+  submission: PendingPackSubmission & {
+    description: string | null; source_url: string | null; root: string | null; excludes_jasrac: number;
+    status: string; review_note: string | null;
+  };
+}) {
+  const p = props.submission;
+  return (
+    <>
+      <section>
+        <h1>共有パックの確認</h1>
+        <p><a href="/admin">運営へ戻る</a></p>
+        <p class="badge">{p.status === 'pending' ? '確認待ち' : p.status}</p>
+        {p.review_note && <p class="notice info">{p.review_note}</p>}
+      </section>
+      <section>
+        <h2>{p.title}（{p.slug}）</h2>
+        {p.description && <p class="pre">{p.description}</p>}
+        <dl>
+          <dt>投稿者・出典</dt><dd>{p.source_url ? <a href={p.source_url} rel="noreferrer">{p.source_name}</a> : p.source_name}</dd>
+          <dt>投稿者アカウント</dt><dd>{p.submitted_by}</dd>
+          <dt>再配布の条件</dt><dd class="pre">{p.license}</dd>
+          <dt>zip</dt><dd>{formatSize(p.size)}{p.root && `・フォルダ ${p.root}`}</dd>
+          <dt>JASRAC 管理楽曲</dt><dd>{p.excludes_jasrac ? '含まないとの申告あり（内容を確認してください）' : '申告なし'}</dd>
+          <dt>申請日</dt><dd>{formatDate(p.created_at)}</dd>
+        </dl>
+        {p.status === 'pending' && (
+          <>
+            <p><a class="button" href={`/admin/pack-submissions/${p.id}/archive`}>非公開 zip をダウンロードして確認</a></p>
+            <p class="small">出典・再配布条件・zip の内容を確認し、JASRAC 管理楽曲が含まれていないことを確認してから承認してください。</p>
+            <form method="post" action={`/admin/pack-submissions/${p.id}/approve`} class="inline" onsubmit="return confirm('このパックを公開しますか？')">
+              <button type="submit">確認して公開</button>
+            </form>
+            <form method="post" action={`/admin/pack-submissions/${p.id}/reject`} class="form">
+              <label>差し戻す理由<textarea name="note" rows={3} maxlength={500} required /></label>
+              <button type="submit" class="danger">差し戻す</button>
+            </form>
+          </>
+        )}
       </section>
     </>
   );

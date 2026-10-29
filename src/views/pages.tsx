@@ -346,6 +346,7 @@ export function PacksPage(props: { packs: { id: string; title: string; source_na
     <section>
       <h1>共有パック</h1>
       <p>シナリオと一緒に読み込んで使う素材です。「既定」のものはすべてのシナリオで使います（投稿者が外せます）。</p>
+      <p><a class="button" href="/my/packs">共有パックを投稿する</a></p>
       <ul class="scenario-list">
         {props.packs.map(p => (
           <li>
@@ -359,6 +360,68 @@ export function PacksPage(props: { packs: { id: string; title: string; source_na
         ))}
       </ul>
     </section>
+  );
+}
+
+const SUBMISSION_STATE_LABELS: Record<string, string> = {
+  uploading: 'アップロード中', pending: '運営の確認待ち', approved: '公開', rejected: '差し戻し',
+};
+
+export function PackSubmissionPage(props: {
+  submissions: {
+    id: number; slug: string; title: string; status: string; review_note: string | null; created_at: number;
+  }[];
+  termsAccepted: boolean;
+  turnstileKey?: string;
+  uploaded?: boolean;
+}) {
+  return (
+    <>
+      <section>
+        <h1>共有パックを投稿する</h1>
+        <p>zip は 1 GB までです。投稿したパックは非公開のまま運営が確認し、承認後に配布します。出典と再配布の条件を必ず記入してください。JASRAC 管理楽曲は対象外です。</p>
+        {props.uploaded && <Notice>申請を運営に送りました。確認が済むまで公開されません。</Notice>}
+        {!props.termsAccepted && <Notice kind="error">投稿には<a href="/my">利用規約への同意</a>が必要です。</Notice>}
+      </section>
+      {props.termsAccepted && (
+        <section>
+          <h2>新しい申請</h2>
+          <p class="small">アップロードが中断した場合は、同じ ID と同じ zip でもう一度送ると続きから再開できます。</p>
+          <form id="pack-upload" class="form">
+            <label>ID（英小文字・数字・-、3〜40 文字）<input name="slug" pattern="[a-z0-9][a-z0-9\-]{1,38}[a-z0-9]" maxlength={40} required /></label>
+            <label>題名<input name="title" maxlength={100} required /></label>
+            <label>説明<textarea name="description" rows={4} maxlength={5000} /></label>
+            <label>出典<input name="sourceName" maxlength={100} required /></label>
+            <label>出典 URL（任意）<input name="sourceUrl" type="url" maxlength={500} /></label>
+            <label>再配布の条件（ライセンス、含まれる素材の条件など）<textarea name="license" rows={4} maxlength={5000} required /></label>
+            <label>zip 内のフォルダ（任意）<input name="root" maxlength={200} /></label>
+            <label>パックの zip（ZIP 形式、1 GB まで）<input type="file" name="file" accept=".zip,application/zip" required /></label>
+            <label class="check"><input type="checkbox" name="excludesJasrac" value="1" required /> JASRAC 管理楽曲を含まないことを確認しました。</label>
+            <Turnstile siteKey={props.turnstileKey} />
+            <button type="submit">確認に出す</button>
+            <progress hidden max={100} value={0}></progress>
+            <p class="status" aria-live="polite"></p>
+          </form>
+          <script src="/static/pack-upload.js" defer></script>
+        </section>
+      )}
+      <section>
+        <h2>自分の申請</h2>
+        {props.submissions.length === 0 ? <p class="muted">申請はありません。</p> : (
+          <ul class="scenario-list">
+            {props.submissions.map(s => (
+              <li>
+                <strong>{s.title}</strong>（{s.slug}）
+                <span class={`badge${s.status === 'rejected' ? ' stopped' : ''}`}>{SUBMISSION_STATE_LABELS[s.status] ?? s.status}</span>
+                {s.status === 'approved' && <>・<a href={`/packs/${s.slug}`}>パックを見る</a></>}
+                <div class="meta">{formatDate(s.created_at)}</div>
+                {s.review_note && <p class="small">{s.review_note}</p>}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </>
   );
 }
 

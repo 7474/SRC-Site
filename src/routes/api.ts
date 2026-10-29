@@ -1,9 +1,10 @@
 // JSON の API（カタログ・投稿）
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import type { AppEnv } from '../env';
 import { catalog, PLAYABLE_SELECT, type PackRow, type PlayableRow } from '../lib/catalog';
 import { verifyTurnstile } from '../lib/turnstile';
-import { canPresign, completeMultipartUpload, createMultipartUpload, presignUploadPart, UPLOAD_CONTENT_TYPE } from '../lib/presign';
+import { abortMultipartUpload, canPresign, completeMultipartUpload, createMultipartUpload, presignUploadPart, UPLOAD_CONTENT_TYPE } from '../lib/presign';
+import { parsePackSubmissionInput, type PackSubmissionRow } from '../lib/pack-submissions';
 import { now, today } from '../lib/util';
 import { canEdit, getScenario, requireUser } from './common';
 
@@ -71,6 +72,201 @@ export async function count(db: D1Database, slug: string, column: 'plays' | 'dow
 
 api.use('/scenarios/*', requireUser);
 api.use('/versions/*', requireUser);
+api.use('/pack-submissions', requireUser);
+api.use('/pack-submissions/*', requireUser);
+
+api.post('/pack-submissions', async c => {
+  const user = c.get('user')!;
+  if (!user.terms_accepted_at) {
+    return c.json({ error: '利用規約に同意してください（設定の頁）' }, 403);
+  }
+  const body = await c.req.json<unknown>().catch(() => null);
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return c.json({ error: '入力を読み取れません。' }, 400);
+  }
+  const parsed = parsePackSubmissionInput(body);
+  if ('error' in parsed) {
+    return c.json({ error: parsed.error }, 400);
+  }
+  const { input } = parsed;
+  const turnstile = (body as Record<string, unknown>).turnstile;
+  if (!(await verifyTurnstile(c.env, typeof turnstile === 'string' ? turnstile : undefined, c.req.header('CF-Connecting-IP')))) {
+    return c.json({ error: '確認に失敗しました。頁を読み込み直してください' }, 400);
+  }
+  const unfinished = await c.env.DB.prepare(
+    "SELECT id, size FROM pack_submissions WHERE slug = ? AND owner_id = ? AND status = 'uploading'",
+  ).bind(input.slug, user.id).first<{ id: number; size: number }>();
+  if (unfinished) {
+    if (unfinished.size !== input.size) {
+      return c.json({ error: '同じ ID のアップロードが残っています。元の zip を選ぶか、時間をおいてください。' }, 409);
+    }
+    await c.env.DB.prepare(
+      `UPDATE pack_submissions SET title = ?, description = ?, source_name = ?, source_url = ?, license = ?, root = ?, excludes_jasrac = 1
+        WHERE id = ? AND status = 'uploading'`,
+    ).bind(
+      input.title, input.description || null, input.sourceName, input.sourceUrl || null,
+      input.license, input.root || null, unfinished.id,
+    ).run();
+    return c.json({ submissionId: unfinished.id, partSize: PART_SIZE, parts: partCount(input.size) });
+  }
+  const duplicate = await c.env.DB.prepare(
+    `SELECT id FROM packs WHERE id = ?
+     UNION ALL SELECT id FROM pack_submissions WHERE slug = ? AND status IN ('uploading', 'pending', 'approved') LIMIT 1`,
+  ).bind(input.slug, input.slug).first<{ id: number }>();
+  if (duplicate) {
+    return c.json({ error: 'その ID は使用中か、確認中です。' }, 400);
+  }
+  const usage = await c.env.DB.prepare(
+    `SELECT COALESCE(SUM(CASE WHEN r2_key != '' THEN size ELSE 0 END), 0) AS total,
+            SUM(CASE WHEN created_at > ? THEN 1 ELSE 0 END) AS today
+       FROM pack_submissions WHERE owner_id = ?`,
+  ).bind(now() - 24 * 3600 * 1000, user.id).first<{ total: number; today: number }>();
+  if (user.role !== 'admin') {
+    if ((usage?.today ?? 0) >= MAX_VERSIONS_PER_DAY) {
+      return c.json({ error: `パックの投稿は 1 日 ${MAX_VERSIONS_PER_DAY} 回までです` }, 429);
+    }
+    if ((usage?.total ?? 0) + input.size > MAX_TOTAL_PER_USER) {
+      return c.json({ error: '投稿できる合計の大きさ（5 GB）を超えます。' }, 400);
+    }
+  }
+
+  const key = `pack-submissions/${input.slug}/${crypto.randomUUID()}.zip`;
+  const uploadId = canPresign(c.env)
+    ? await createMultipartUpload(c.env, key)
+    : (await c.env.FILES.createMultipartUpload(key, { httpMetadata: { contentType: UPLOAD_CONTENT_TYPE } })).uploadId;
+  try {
+    const row = await c.env.DB.prepare(
+      `INSERT INTO pack_submissions
+         (slug, owner_id, title, description, source_name, source_url, license, root, excludes_jasrac, size, r2_key, upload_id, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?) RETURNING id`,
+    ).bind(
+      input.slug, user.id, input.title, input.description || null, input.sourceName,
+      input.sourceUrl || null, input.license, input.root || null, input.size, key, uploadId, now(),
+    ).first<{ id: number }>();
+    if (!row) {
+      throw new Error('パック申請を保存できませんでした。');
+    }
+    return c.json({ submissionId: row.id, partSize: PART_SIZE, parts: partCount(input.size) });
+  } catch (error) {
+    try {
+      if (canPresign(c.env)) {
+        await abortMultipartUpload(c.env, key, uploadId);
+      } else {
+        await c.env.FILES.resumeMultipartUpload(key, uploadId).abort();
+      }
+    } catch (cleanupError) {
+      console.error('pack submission upload cleanup failed', cleanupError);
+    }
+    throw error;
+  }
+});
+
+async function ownPackSubmission(c: Context<AppEnv>, id: string): Promise<PackSubmissionRow | null> {
+  const submissionId = Number(id);
+  if (!Number.isInteger(submissionId) || submissionId <= 0) {
+    return null;
+  }
+  return c.env.DB.prepare('SELECT * FROM pack_submissions WHERE id = ? AND owner_id = ?')
+    .bind(submissionId, c.get('user').id).first<PackSubmissionRow>();
+}
+
+async function uploadingPackPart(c: Context<AppEnv>): Promise<{ submission: PackSubmissionRow; part: number } | Response> {
+  const submission = await ownPackSubmission(c, c.req.param('id'));
+  if (!submission || submission.status !== 'uploading' || !submission.upload_id) {
+    return c.json({ error: 'パック申請がありません' }, 404);
+  }
+  const part = Number(c.req.param('part'));
+  if (!Number.isInteger(part) || part < 1 || part > partCount(submission.size)) {
+    return c.json({ error: 'パートの番号が不正です' }, 400);
+  }
+  return { submission, part };
+}
+
+api.get('/pack-submissions/:id/parts/:part', async c => {
+  const found = await uploadingPackPart(c);
+  if (found instanceof Response) {
+    return found;
+  }
+  const { submission, part } = found;
+  if (canPresign(c.env)) {
+    return c.json({
+      url: await presignUploadPart(c.env, submission.r2_key, submission.upload_id!, part),
+      direct: true,
+      length: partLength(submission.size, part),
+    });
+  }
+  return c.json({
+    url: `/api/pack-submissions/${submission.id}/parts/${part}`,
+    direct: false,
+    length: partLength(submission.size, part),
+  });
+});
+
+api.put('/pack-submissions/:id/parts/:part', async c => {
+  if (canPresign(c.env)) {
+    return c.json({ error: 'パートは R2 へ直接上げてください' }, 400);
+  }
+  const found = await uploadingPackPart(c);
+  if (found instanceof Response) {
+    return found;
+  }
+  const { submission, part } = found;
+  const length = Number(c.req.header('Content-Length'));
+  if (length !== partLength(submission.size, part) || !c.req.raw.body) {
+    return c.json({ error: '大きさが申告と違います' }, 400);
+  }
+  const upload = c.env.FILES.resumeMultipartUpload(submission.r2_key, submission.upload_id!);
+  const uploaded = await upload.uploadPart(part, c.req.raw.body.pipeThrough(new FixedLengthStream(length)));
+  return c.json({ partNumber: uploaded.partNumber, etag: uploaded.etag });
+});
+
+api.post('/pack-submissions/:id/complete', async c => {
+  const submission = await ownPackSubmission(c, c.req.param('id'));
+  if (!submission) {
+    return c.json({ error: 'パック申請がありません' }, 404);
+  }
+  if (submission.status !== 'uploading') {
+    return c.json({ state: submission.status });
+  }
+  if (!submission.upload_id) {
+    return c.json({ error: 'アップロードを再開できません。' }, 409);
+  }
+  const body = await c.req.json<{ parts?: { partNumber: number; etag: string }[] }>().catch(() => ({}));
+  const parts = Array.isArray(body.parts) ? body.parts : [];
+  if (parts.length !== partCount(submission.size) || parts.some((p, i) =>
+    !p || p.partNumber !== i + 1 || typeof p.etag !== 'string')) {
+    return c.json({ error: 'パートが揃っていません' }, 400);
+  }
+  try {
+    if (canPresign(c.env)) {
+      await completeMultipartUpload(c.env, submission.r2_key, submission.upload_id, parts);
+    } else {
+      await c.env.FILES.resumeMultipartUpload(submission.r2_key, submission.upload_id).complete(parts);
+    }
+  } catch (error) {
+    return c.json({ error: `アップロードを完了できません（${String((error as Error).message ?? error)}）` }, 400);
+  }
+  const head = await c.env.FILES.head(submission.r2_key);
+  if (!head || head.size !== submission.size) {
+    return c.json({ error: '大きさが申告と違います' }, 400);
+  }
+  const partsInEtag = head.etag.match(/-(\d+)$/)?.[1];
+  if (partsInEtag && Number(partsInEtag) !== parts.length) {
+    return c.json({ error: 'パートの数が合いません' }, 400);
+  }
+  await c.env.DB.prepare(
+    "UPDATE pack_submissions SET status = 'pending', upload_id = NULL WHERE id = ? AND status = 'uploading'",
+  ).bind(submission.id).run();
+  return c.json({ state: 'pending' });
+});
+
+api.get('/pack-submissions/:id', async c => {
+  const submission = await ownPackSubmission(c, c.req.param('id'));
+  if (!submission) {
+    return c.json({ error: 'パック申請がありません' }, 404);
+  }
+  return c.json({ id: submission.id, slug: submission.slug, status: submission.status, reviewNote: submission.review_note });
+});
 
 // 版を作り、アップロード先を返す
 api.post('/scenarios/:slug/versions', async c => {

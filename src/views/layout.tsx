@@ -39,6 +39,7 @@ export function Layout(props: { title: string; siteName: string; user: User | nu
                 <div class="menu">
                   <a href="/my" aria-current={path === '/my' ? 'page' : undefined}>マイページ</a>
                   <a href="/my/scenarios/new" aria-current={path === '/my/scenarios/new' ? 'page' : undefined}>シナリオを投稿</a>
+                  <a href="/my/packs" aria-current={path === '/my/packs' ? 'page' : undefined}>共有パックを投稿</a>
                   {user.role === 'admin' && <a href="/admin" aria-current={path.startsWith('/admin') ? 'page' : undefined}>運営</a>}
                   <form method="post" action="/auth/logout"><button type="submit">ログアウト</button></form>
                 </div>
