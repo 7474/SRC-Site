@@ -168,7 +168,10 @@ api.post('/pack-submissions', async c => {
   }
 });
 
-async function ownPackSubmission(c: Context<AppEnv>, id: string): Promise<PackSubmissionRow | null> {
+async function ownPackSubmission(c: Context<AppEnv>, id: string | undefined): Promise<PackSubmissionRow | null> {
+  if (!id) {
+    return null;
+  }
   const submissionId = Number(id);
   if (!Number.isInteger(submissionId) || submissionId <= 0) {
     return null;
