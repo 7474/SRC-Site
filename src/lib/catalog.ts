@@ -66,6 +66,14 @@ export function catalog(name: string, scenarios: PlayableRow[], packs: PackRow[]
   };
 }
 
+export function packCatalog(name: string, packs: PackRow[]) {
+  return {
+    format: 1,
+    name,
+    entries: packs.filter(p => !p.withdrawn).map(packEntry),
+  };
+}
+
 export const PLAYABLE_SELECT = `
   SELECT s.slug, s.title, s.author, s.license, s.description,
          v.id AS version_id, v.number, v.etag, v.root, v.eve, v.requires, v.excludes

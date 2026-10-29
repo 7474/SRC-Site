@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { catalog, resolveRequires, type PackRow, type PlayableRow } from '../src/lib/catalog';
+import { catalog, packCatalog, resolveRequires, type PackRow, type PlayableRow } from '../src/lib/catalog';
 import { reportUrl } from '../src/lib/util';
 
 const pack = (id: string, is_default: number, priority: number, withdrawn = 0): PackRow => ({
@@ -30,6 +30,21 @@ describe('resolveRequires', () => {
       ['basic', 'asset', '/files/packs/basic/v1.zip'],
       ['graphic', 'asset', '/files/packs/graphic/v1.zip'],
     ]);
+  });
+});
+
+describe('packCatalog', () => {
+  it('lists every available pack as a same-origin asset archive and omits withdrawn packs', () => {
+    const result = packCatalog('Site', [pack('basic', 1, 0), pack('gsc', 0, 10), pack('removed', 0, 20, 1)]);
+    expect(result).toEqual({
+      format: 1,
+      name: 'Site',
+      entries: [
+        { id: 'basic', kind: 'asset', title: 'basic', archive: '/files/packs/basic/v1.zip', version: 'v1' },
+        { id: 'gsc', kind: 'asset', title: 'gsc', archive: '/files/packs/gsc/v1.zip', version: 'v1' },
+      ],
+    });
+    expect(result.entries.every(entry => entry.archive.startsWith('/'))).toBe(true);
   });
 });
 

@@ -1,7 +1,7 @@
 // JSON の API（カタログ・投稿）
 import { Hono, type Context } from 'hono';
 import type { AppEnv } from '../env';
-import { catalog, PLAYABLE_SELECT, type PackRow, type PlayableRow } from '../lib/catalog';
+import { catalog, packCatalog, PLAYABLE_SELECT, type PackRow, type PlayableRow } from '../lib/catalog';
 import { verifyTurnstile } from '../lib/turnstile';
 import { abortMultipartUpload, canPresign, completeMultipartUpload, createMultipartUpload, presignUploadPart, UPLOAD_CONTENT_TYPE } from '../lib/presign';
 import { parsePackSubmissionInput, type PackSubmissionRow } from '../lib/pack-submissions';
@@ -42,6 +42,13 @@ api.get('/catalog.json', async c => {
   const rows = (await c.env.DB.prepare(`${PLAYABLE_SELECT} AND s.visibility = 'public' ORDER BY s.updated_at DESC`).all<PlayableRow>()).results;
   catalogHeaders(c);
   return c.json(catalog(c.env.SITE_NAME, rows, await packs(c.env.DB)));
+});
+
+// Shared packs available as SRC#Web asset archives.
+api.get('/packs.json', async c => {
+  const rows = await packs(c.env.DB);
+  catalogHeaders(c);
+  return c.json(packCatalog(c.env.SITE_NAME, rows));
 });
 
 // 1 本だけのカタログ（SRC#Web の ?play= で開くとき。限定公開も含む）
@@ -170,16 +177,17 @@ async function ownPackSubmission(c: Context<AppEnv>, id: string): Promise<PackSu
     .bind(submissionId, c.get('user')!.id).first<PackSubmissionRow>();
 }
 
-async function uploadingPackPart(c: Context<AppEnv>): Promise<{ submission: PackSubmissionRow & { upload_id: string }; part: number } | Response> {
+async function uploadingPackPart(c: Context<AppEnv>): Promise<{ submission: PackSubmissionRow; uploadId: string; part: number } | Response> {
   const submission = await ownPackSubmission(c, c.req.param('id'));
-  if (!submission || submission.status !== 'uploading' || !submission.upload_id) {
+  const uploadId = submission?.upload_id;
+  if (!submission || submission.status !== 'uploading' || !uploadId) {
     return c.json({ error: 'パック申請がありません' }, 404);
   }
   const part = Number(c.req.param('part'));
   if (!Number.isInteger(part) || part < 1 || part > partCount(submission.size)) {
     return c.json({ error: 'パートの番号が不正です' }, 400);
   }
-  return { submission, part };
+  return { submission, uploadId, part };
 }
 
 api.get('/pack-submissions/:id/parts/:part', async c => {
@@ -187,10 +195,10 @@ api.get('/pack-submissions/:id/parts/:part', async c => {
   if (found instanceof Response) {
     return found;
   }
-  const { submission, part } = found;
+  const { submission, uploadId, part } = found;
   if (canPresign(c.env)) {
     return c.json({
-      url: await presignUploadPart(c.env, submission.r2_key, submission.upload_id!, part),
+      url: await presignUploadPart(c.env, submission.r2_key, uploadId, part),
       direct: true,
       length: partLength(submission.size, part),
     });
@@ -210,12 +218,12 @@ api.put('/pack-submissions/:id/parts/:part', async c => {
   if (found instanceof Response) {
     return found;
   }
-  const { submission, part } = found;
+  const { submission, uploadId, part } = found;
   const length = Number(c.req.header('Content-Length'));
   if (length !== partLength(submission.size, part) || !c.req.raw.body) {
     return c.json({ error: '大きさが申告と違います' }, 400);
   }
-  const upload = c.env.FILES.resumeMultipartUpload(submission.r2_key, submission.upload_id!);
+  const upload = c.env.FILES.resumeMultipartUpload(submission.r2_key, uploadId);
   const uploaded = await upload.uploadPart(part, c.req.raw.body.pipeThrough(new FixedLengthStream(length)));
   return c.json({ partNumber: uploaded.partNumber, etag: uploaded.etag });
 });
