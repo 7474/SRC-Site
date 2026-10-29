@@ -18,6 +18,13 @@ describe('サンドボックス', () => {
     const entries = await readEntries(reader('sandbox-scenario.zip'));
     expect(inspect(entries)).toMatchObject({ ok: true, root: 'サンドボックス', eve: 'サンドボックス.eve' });
     expect(entries.some(e => /\.(bmp|mid|wav)$/i.test(e.name))).toBe(false);
+    // インターミッションのコマンドと、次のステージ（Continue）のイベントがある
+    const eve = readFileSync('sandbox/scenario/サンドボックス/サンドボックス.eve', 'utf8');
+    const targets = [...eve.matchAll(/^(?:IntermissionCommand \S+|Continue) (\S+\.eve)$/gm)].map(m => m[1].replace(/\\/g, '/'));
+    expect(targets).toEqual(['Lib/about.eve', 'ステージ/おわり.eve']);
+    for (const t of targets) {
+      expect(entries.some(e => e.name === `サンドボックス/${t}`), t).toBe(true);
+    }
   });
 
   it('パック: 素材の投稿として通り、データが参照する画像・音がある', async () => {

@@ -3,6 +3,8 @@
 # 生成AI（Claude）で作ったテスト用のもの。画像・音楽・効果音は共有パック「サンドボックス素材」（sandbox-assets）から読み込む
 
 プロローグ:
+# インターミッションの BGM
+RenameBGM Intermission sandbox_support.mid
 Exit
 
 スタート:
@@ -26,7 +28,7 @@ End
 PlaySound sandbox_beep.wav
 Talk システム
 いまの音は、共有パックの効果音（Sound/sandbox_beep.wav）です。
-右にいる「練習用標的」を倒すと、動作確認は終わりです。
+右にいる「練習用標的」を倒すと、インターミッションに進みます。
 End
 Exit
 
@@ -38,6 +40,9 @@ Talk ミドリ
 データビューアでは、わたしたちのデータから BGM をその場で鳴らせます。
 End
 Talk システム
-動作確認は以上です。遊んでいただき、ありがとうございました。
+このあとインターミッションに進みます。
+セーブ・ユニットやパイロットの確認・「サンドボックスについて」を試せます。
+「次のステージへ」を選ぶと終わります。
 End
-Quit
+IntermissionCommand サンドボックスについて Lib\about.eve
+Continue ステージ\おわり.eve
