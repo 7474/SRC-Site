@@ -19,6 +19,7 @@ SRC-Site は Cloudflare Workers で動く、SRC#Web を組み込んだ SRC シ�
 - `packs/` 共有パック（既定で一緒に読み込む素材）の定義。`scripts/packs.py` が作り、`scripts/publish-packs.sh` が配る
 - `public/` ポータルの CSS・JS（`/static/`）
 - `scripts/assemble.sh` 配信物（`dist/`）の組み立て。SRC#Web は `/play/`
+- `sandbox/` 動作確認用のシナリオと共有パック（生成AIで作ったテスト用。`scripts/make-sandbox.py` で zip にし、`scripts/register-sandbox.mjs` で手元に入れる。[sandbox/README.md](../sandbox/README.md)）
 - `scripts/smoke.mjs` 手元の `wrangler dev` での通しの確認。`scripts/check-site.mjs` 配信したサイトを外から確かめる
 
 ## 手元で動かす

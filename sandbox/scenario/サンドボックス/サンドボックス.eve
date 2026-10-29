@@ -1,0 +1,43 @@
+@サンドボックス
+# サンドボックス：SRC#Site の動作確認用のシナリオ
+# 生成AI（Claude）で作ったテスト用のもの。画像・音楽・効果音は共有パック「サンドボックス素材」（sandbox-assets）から読み込む
+
+プロローグ:
+Exit
+
+スタート:
+ChangeMap sandbox.map
+Create 味方 サンドボックス機 0 アオイ 10 3 4
+Create 味方 テスト支援機 0 ミドリ 10 3 6
+Create 敵 練習用標的 0 標的 1 9 5
+StartBGM sandbox_title.mid
+
+Talk システム
+【お知らせ】このシナリオは、SRC#Site の動作確認のために生成AIで作ったテスト用のものです。
+画像・音楽・効果音も、すべて生成AIがプログラムで作ったテスト用のものです。
+End
+
+Talk アオイ
+アオイです。わたしの顔の絵は、シナリオではなく共有パック「サンドボックス素材」から読み込んでいます。
+Talk ミドリ
+ミドリです。いま流れている曲も、共有パックの MIDI（sandbox_title.mid）です。
+End
+
+PlaySound sandbox_beep.wav
+Talk システム
+いまの音は、共有パックの効果音（Sound/sandbox_beep.wav）です。
+右にいる「練習用標的」を倒すと、動作確認は終わりです。
+End
+Exit
+
+全滅 敵:
+StartBGM sandbox_title.mid
+Talk アオイ
+標的を倒しました。戦闘の BGM は鳴りましたか？
+Talk ミドリ
+データビューアでは、わたしたちのデータから BGM をその場で鳴らせます。
+End
+Talk システム
+動作確認は以上です。遊んでいただき、ありがとうございました。
+End
+Quit
