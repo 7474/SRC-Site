@@ -68,9 +68,19 @@ sequenceDiagram
 ## 承認とプレビュー
 
 - `/my/submissions/:id`: 投稿の中身。画像を並べ、音を鳴らし、ファイルの一覧を出す。パックにすでにある同じ名前のファイルは「差し替え」と出す
+- 投稿の頁から「データビューアで見る・聞く」で、承認前の投稿もデータビューアで開ける（`/viewer/archive?index=/api/viewer/submissions/:id/index.json&id=submission-:id`）。データの表示・MIDI の再生ができ、画像は投稿先のパックと重ねて探す
 - プレビューのファイルは `/files/pack-submissions/:id/<道>`（zip から 1 つ取り出す）。投稿の zip は `/files/pack-submissions/:id.zip`（Range）。どちらも投稿した人と、パックの管理者・運営だけが読める（`Cache-Control: private`）
 - 承認すると、その投稿のファイルを `active` にし、同じ道（大文字小文字を区別しない）の前のファイルを `replaced` にして、パックの `revision` を上げる。続けて管理の頁で zip への反映を始める
 - 管理者はファイルを外せる（道を指定するか、投稿ごと）。外すと `revision` が上がる
+
+## 投稿の状態（投稿した人への知らせ）
+
+メールなどでは知らせない。投稿した人は画面で状態を見る。
+
+| 画面 | 出すもの |
+|---|---|
+| `/my` の「パックへの投稿」 | 投稿ごとの状態（承認待ち・承認・却下など）、投稿・承認・却下の日時、承認したものが zip に入っているか、却下の理由・検査で弾かれた理由 |
+| `/my/submissions/:id` | 状態の説明（検査中・承認待ち・承認（日時・承認者・zip に入っているか）・却下（日時・承認者・理由）・検査で弾かれた理由・取り下げ・差し替え済み） |
 
 ## zip への反映（承認者のブラウザ）
 
@@ -100,6 +110,9 @@ sequenceDiagram
 | `GET /api/viewer/index.json` | 公開のシナリオ（`requires` を持つ）と、配っているパックの一覧 | `public, max-age=60` |
 | `GET /api/viewer/archives/<scenarios・packs>/<ID>/<版>.json` | zip の中のファイルの一覧（`{ files: [{ path, size }] }`） | 不変（Cache API にも置く） |
 | `GET /files/<scenarios・packs>/<ID>/<版>/<zip の中の道>` | zip の中のファイルを 1 つ取り出して返す。区切りと大文字小文字は区別しない。Range に応じる | 不変（Cache API にも置く） |
+| `GET /api/viewer/submissions/<ID>/index.json`・`…/files.json` | パックへの投稿 1 つだけの一覧（重ねるのは投稿先のパック）と、ファイルの一覧（`pack_files` から作る）。投稿した人とパックの管理者だけ | `private` |
+
+- 一覧の `soundFont` は、MIDI を鳴らす SoundFont（.sf2）を探すパック（`soundfont`）。データビューアは MIDI を MeltySynth で WAV に合成して鳴らす（アーカイブ自身と重ねるパックの .sf2 が先）
 
 - 取り出しは zip の目次を Range で読み、目当ての項目だけを Range で読んで展開する（`src/lib/archives.ts`。展開は `DecompressionStream`）。32 MB を超えるファイルは取り出さない（413）
 - 返す種類は画像（BMP・PNG・JPEG・GIF）と音（WAV・MP3・OGG・MIDI）だけ。ほかは `application/octet-stream` と `Content-Security-Policy: sandbox` で返し、投稿された HTML・SVG を同じオリジンで動かさない
@@ -118,7 +131,7 @@ sequenceDiagram
 | 課題 | 内容 |
 |---|---|
 | 管理者を足す | `pack_managers` に作った人以外を入れる画面 |
-| MIDI の再生 | データビューア・プレビューでは MIDI を鳴らせない（ダウンロードだけ） |
 | 参照の照合 | データビューアの「データで使用」は、そのアーカイブのデータ（ユニット・パイロットの画像）だけを見る。素材がどのシナリオから使われているかは出さない |
 | 大きいパックの取り直し | 承認のたびにパックの zip を丸ごと取り直す。大きくなったら、フォルダごとに zip を分ける |
-| 投稿者への知らせ | 承認・却下を投稿者に知らせない（`/my` の一覧で見る） |
+| 投稿者への知らせ | 承認・却下をメールなどで知らせない（状態は `/my` と投稿の頁で見る） |
+| プレビューの MIDI | 投稿の頁そのものでは MIDI を鳴らさない（データビューアで鳴らす） |

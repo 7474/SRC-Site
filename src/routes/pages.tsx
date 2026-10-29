@@ -128,7 +128,8 @@ pages.get('/my', requireUser, async c => {
          FROM pack_managers m JOIN packs p ON p.id = m.pack_id WHERE m.user_id = ? ORDER BY p.title`,
     ).bind(user.id),
     c.env.DB.prepare(
-      `SELECT s.id, s.pack_id, p.title AS pack_title, s.title, s.state, s.created_at
+      `SELECT s.id, s.pack_id, p.title AS pack_title, s.title, s.state, s.created_at, s.reviewed_at, s.review_note, s.inspect_note,
+              p.revision = p.built_revision AND p.r2_key != '' AS reflected
          FROM pack_submissions s JOIN packs p ON p.id = s.pack_id WHERE s.user_id = ? ORDER BY s.created_at DESC LIMIT 100`,
     ).bind(user.id),
   ]);

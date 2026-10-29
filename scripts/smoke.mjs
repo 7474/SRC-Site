@@ -214,6 +214,13 @@ res = await carol.req(preview);
 assert.equal(res.headers.get('Content-Type'), 'image/bmp');
 assert.deepEqual(Buffer.from(await res.arrayBuffer()), bmp);
 assert.match(await (await carol.req(`/my/submissions/${sub.id}`)).text(), /承認して zip に反映する/);
+// 承認前の投稿をデータビューアで開く一覧（投稿した人と管理者だけ）
+assert.equal((await visitor.req(`/api/viewer/submissions/${sub.id}/index.json`)).status, 404);
+const subIndex = await (await carol.req(`/api/viewer/submissions/${sub.id}/index.json`)).json();
+assert.equal(subIndex.archives[0].id, `submission-${sub.id}`);
+const subFiles = await (await bob.req(subIndex.archives[0].files)).json();
+assert.deepEqual(subFiles.files.map(f => f.path), ['Bitmap/Pilot/スモーク.bmp', 'Sound/smoke.wav']);
+assert.match(await (await bob.req(`/my/submissions/${sub.id}`)).text(), /承認を待っています/);
 assert.doesNotMatch(await (await bob.req(`/my/submissions/${sub.id}`)).text(), /承認して zip に反映する/);
 res = await bob.form(`/my/submissions/${sub.id}/approve`, {});
 assert.equal(res.status, 404, '投稿者は承認できない');
@@ -275,7 +282,9 @@ assert.match(await (await carol.req(`/my/submissions/${sub.id}`)).text(), /差�
 await carol.form(`/my/submissions/${sub.id}/approve`, {});
 const stale = await submit(bob, resourceZip({ 'Sound/other.wav': Buffer.from('RIFF') }), { title: '却下' });
 await carol.form(`/my/submissions/${stale.id}/reject`, { note: 'いらない' });
-assert.match(await (await bob.req(`/my/submissions/${stale.id}`)).text(), /いらない/);
+assert.match(await (await bob.req(`/my/submissions/${stale.id}`)).text(), /却下されました.*いらない/s);
+assert.match(await (await bob.req(`/my/submissions/${sub.id}`)).text(), /承認されました.*zip にはまだ入っていません/s);
+assert.match(await (await bob.req('/my')).text(), /却下の理由: いらない/);
 res = await buildAs(carol);
 assert.equal(res.status, 200, await res.clone().text());
 const v2 = (await res.json()).version;

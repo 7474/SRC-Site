@@ -5,13 +5,14 @@ import { PLAYABLE_SELECT, resolveRequires, usablePack, type PackRow, type Playab
 import { findArchive, listEntries, type ArchiveType } from '../lib/archives';
 import { ZipError } from '../lib/zip';
 import { parseJsonArray } from '../lib/util';
+import { visibleSubmission } from './files';
 
 export const viewer = new Hono<AppEnv>();
 
 /** データビューアのアーカイブの一覧の 1 項目（形は 7474/SRC の docs/gui/dataviewer.md） */
 export type ViewerArchive = {
   id: string;
-  kind: 'scenario' | 'pack';
+  kind: 'scenario' | 'pack' | 'resource';
   title: string;
   author?: string;
   description?: string;
@@ -53,7 +54,38 @@ viewer.get('/index.json', async c => {
   }
   c.header('Cache-Control', 'public, max-age=60');
   c.header('Cross-Origin-Resource-Policy', 'same-origin');
-  return c.json({ format: 1, name: c.env.SITE_NAME, archives });
+  return c.json({ format: 1, name: c.env.SITE_NAME, ...soundFont(packRows), archives });
+});
+
+/** MIDI を鳴らす SoundFont（.sf2）を探すアーカイブ。アーカイブ自身と重ねるものに .sf2 が無いときに使う */
+function soundFont(packs: PackRow[]): { soundFont?: string } {
+  const p = packs.find(x => x.id === SOUND_FONT_PACK && usablePack(x));
+  return p ? { soundFont: p.id } : {};
+}
+const SOUND_FONT_PACK = 'soundfont';
+
+// パックへの投稿（承認前を含む）を、投稿した人とパックの管理者がデータビューアで開く（/viewer/archive?index=…&id=submission-<id>）。
+// 重ねるのは投稿先のパック（組んだもの）。ファイルの一覧は検査で作った pack_files から返す（zip を読まない）
+viewer.get('/submissions/:id/:file{index\\.json|files\\.json}', async c => {
+  const s = await visibleSubmission(c, c.req.param('id'));
+  if (!s) {
+    return c.json({ error: 'not found' }, 404);
+  }
+  c.header('Cache-Control', 'private, max-age=0');
+  if (c.req.param('file') === 'files.json') {
+    const files = (await c.env.DB.prepare('SELECT path, size FROM pack_files WHERE submission_id = ? ORDER BY path').bind(s.id).all<{ path: string; size: number }>()).results;
+    return c.json({ files });
+  }
+  const packs = (await c.env.DB.prepare('SELECT * FROM packs').all<PackRow>()).results;
+  const pack = packs.find(p => p.id === s.pack_id);
+  const archive: ViewerArchive = {
+    id: `submission-${s.id}`, kind: 'resource', title: s.title, ...optional({ author: s.author, license: s.license }),
+    page: `/my/submissions/${s.id}`,
+    files: `/api/viewer/submissions/${s.id}/files.json`,
+    base: `/files/pack-submissions/${s.id}/`,
+    requires: pack && usablePack(pack) ? [pack.id] : [],
+  };
+  return c.json({ format: 1, name: c.env.SITE_NAME, ...soundFont(packs), archives: [archive] });
 });
 
 // zip の中のファイルの一覧。版を含めて不変なので、Cache API に置く

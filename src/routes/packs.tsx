@@ -181,8 +181,9 @@ packs.get('/my/packs/:id/submit', requireUser, async c => {
 });
 
 async function submissionFor(c: Context<AppEnv>) {
-  const s = await c.env.DB.prepare('SELECT s.*, u.handle FROM pack_submissions s JOIN users u ON u.id = s.user_id WHERE s.id = ?')
-    .bind(Number(c.req.param('id'))).first<Submission & { handle: string }>();
+  const s = await c.env.DB.prepare(
+    `SELECT s.*, u.handle, r.handle AS reviewer FROM pack_submissions s JOIN users u ON u.id = s.user_id LEFT JOIN users r ON r.id = s.reviewed_by WHERE s.id = ?`,
+  ).bind(Number(c.req.param('id'))).first<Submission & { handle: string; reviewer: string | null }>();
   if (!s) {
     return null;
   }
@@ -204,7 +205,10 @@ packs.get('/my/submissions/:id', requireUser, async c => {
             EXISTS (SELECT 1 FROM pack_files o WHERE o.pack_id = f.pack_id AND o.state = 'active' AND o.submission_id != f.submission_id AND lower(o.path) = lower(f.path)) AS conflict
        FROM pack_files f WHERE f.submission_id = ? ORDER BY f.path`,
   ).bind(s.id).all<any>()).results;
-  return render(c, s.title, <SubmissionPage s={s} p={pack} files={files} canReview={manage} isSubmitter={s.user_id === c.get('user')!.id} />);
+  return render(c, s.title, (
+    <SubmissionPage s={s} p={pack} files={files} canReview={manage} isSubmitter={s.user_id === c.get('user')!.id}
+      reflected={pack.revision === pack.built_revision && pack.r2_key !== ''} />
+  ));
 });
 
 packs.post('/my/submissions/:id/approve', requireUser, async c => {

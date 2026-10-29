@@ -33,7 +33,8 @@ files.on(['GET', 'HEAD'], '/files/packs/:id/:file', async c => {
 // パックへの投稿の zip（投稿した人とパックの管理者だけ。承認者のブラウザが組み直しに読む）と、その中のファイル（プレビュー）
 const PRIVATE = { 'Cache-Control': 'private, max-age=0', 'Cross-Origin-Resource-Policy': 'same-origin' };
 
-async function visibleSubmission(c: Context<AppEnv>, id: string): Promise<Submission | null> {
+/** 投稿を見てよいか（投稿した人と、パックの管理者・運営）。検査に通ったものだけ */
+export async function visibleSubmission(c: Context<AppEnv>, id: string): Promise<Submission | null> {
   const user = c.get('user');
   const s = await c.env.DB.prepare('SELECT * FROM pack_submissions WHERE id = ?').bind(Number(id)).first<Submission>();
   if (!user || !s || !['pending', 'approved'].includes(s.state)) {

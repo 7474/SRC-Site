@@ -278,11 +278,16 @@ const MEDIA_LABELS: Record<MediaKind, string> = {
 };
 
 export function SubmissionPage(props: {
-  s: { id: number; pack_id: string; title: string; author: string | null; license: string | null; state: string; size: number; created_at: number; inspect_note: string | null; review_note: string | null; handle: string };
+  s: {
+    id: number; pack_id: string; title: string; author: string | null; license: string | null; state: string; size: number; created_at: number;
+    inspect_note: string | null; review_note: string | null; handle: string; reviewer: string | null; reviewed_at: number | null;
+  };
   p: { id: string; title: string; policy: string | null };
   files: SubmissionFile[];
   canReview: boolean;
   isSubmitter: boolean;
+  /** パックの zip に、承認したものがすべて入っているか */
+  reflected: boolean;
 }) {
   const { s, p } = props;
   const preview = s.state === 'pending' || s.state === 'approved';
@@ -302,8 +307,7 @@ export function SubmissionPage(props: {
           <a href={`/packs/${p.id}`}>{p.title}</a> への投稿 ・ {s.author && s.author !== s.handle && <>作者: {s.author} ・ </>}投稿: <a href={`/users/${s.handle}`}>{s.handle}</a> ・ {formatDate(s.created_at)} ・ {formatSize(s.size)}
           {' '}<span class={`badge${s.state === 'rejected' ? ' stopped' : ''}`}>{SUBMISSION_STATES[s.state] ?? s.state}</span>
         </p>
-        {s.inspect_note && <Notice kind="error">検査で弾かれました: {s.inspect_note}</Notice>}
-        {s.review_note && <Notice kind="error">却下の理由: {s.review_note}</Notice>}
+        <SubmissionStatus s={s} reflected={props.reflected} />
         {s.license && <p class="pre">{s.license}</p>}
         {props.canReview && s.state === 'pending' && (
           <div class="actions">
@@ -314,6 +318,9 @@ export function SubmissionPage(props: {
               <input name="note" placeholder="却下の理由（投稿者に見えます）" maxlength={500} /> <button type="submit" class="danger">却下する</button>
             </form>
           </div>
+        )}
+        {preview && (
+          <p><a href={`/viewer/archive?index=${encodeURIComponent(`/api/viewer/submissions/${s.id}/index.json`)}&id=submission-${s.id}`}>データビューアで見る・聞く</a>（データ・MIDI も。パックの画像と重ねて見られます）</p>
         )}
         {props.isSubmitter && s.state === 'pending' && (
           <form method="post" action={`/my/submissions/${s.id}/withdraw`} onsubmit="return confirm('この投稿を取り下げますか？')">
@@ -371,6 +378,34 @@ export function SubmissionPage(props: {
       )}
     </>
   );
+}
+
+/** 投稿の状態（投稿した人に、承認・却下・zip への反映を知らせる） */
+export function SubmissionStatus(props: {
+  s: { state: string; inspect_note: string | null; review_note: string | null; reviewer: string | null; reviewed_at: number | null };
+  reflected: boolean;
+}) {
+  const { s } = props;
+  const by = s.reviewed_at ? <>（{formatDate(s.reviewed_at)}{s.reviewer && <>・{s.reviewer}</>}）</> : null;
+  switch (s.state) {
+    case 'uploading':
+    case 'inspecting':
+      return <Notice>検査しています。しばらくしてから頁を読み込み直してください。</Notice>;
+    case 'pending':
+      return <Notice>検査に通りました。パックの管理者の承認を待っています。</Notice>;
+    case 'approved':
+      return <Notice>承認されました{by}。{props.reflected ? 'パックの zip に入っています。' : 'パックの zip にはまだ入っていません（管理者が反映すると入ります）。'}</Notice>;
+    case 'retired':
+      return <Notice>承認されましたが{by}、ファイルはすべてほかの投稿に差し替わったか、外されました。</Notice>;
+    case 'withdrawn':
+      return <Notice>取り下げました{by}。</Notice>;
+    case 'rejected':
+      return s.inspect_note
+        ? <Notice kind="error">検査で弾かれました: {s.inspect_note}</Notice>
+        : <Notice kind="error">却下されました{by}。{s.review_note && <>理由: {s.review_note}</>}</Notice>;
+    default:
+      return null;
+  }
 }
 
 export function isPolicyId(id: string): id is PolicyId {

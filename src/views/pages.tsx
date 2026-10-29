@@ -156,7 +156,10 @@ export function UserPage(props: { handle: string; items: ListItem[] }) {
 }
 
 export type MyPack = { id: string; title: string; role: string; pending: number; dirty: number };
-export type MySubmission = { id: number; pack_id: string; pack_title: string; title: string; state: string; created_at: number };
+export type MySubmission = {
+  id: number; pack_id: string; pack_title: string; title: string; state: string; created_at: number;
+  reviewed_at: number | null; review_note: string | null; inspect_note: string | null; reflected: number;
+};
 
 export function MePage(props: {
   handle: string; termsAccepted: boolean; items: (ListItem & { visibility: string; hidden: number })[]; error?: string; saved?: boolean;
@@ -224,7 +227,12 @@ export function MePage(props: {
               <li>
                 <a class="title" href={`/my/submissions/${s.id}`}>{s.title}</a>
                 <span class="list-badges"><span class={`badge${s.state === 'rejected' ? ' stopped' : ''}`}>{SUBMISSION_STATES[s.state] ?? s.state}</span></span>
-                <div class="meta"><a href={`/packs/${s.pack_id}`}>{s.pack_title}</a> ・ {formatDate(s.created_at)}</div>
+                <div class="meta">
+                  <a href={`/packs/${s.pack_id}`}>{s.pack_title}</a> ・ 投稿 {formatDate(s.created_at)}
+                  {s.reviewed_at && <> ・ {s.state === 'approved' ? '承認' : s.state === 'rejected' ? '却下' : '更新'} {formatDate(s.reviewed_at)}</>}
+                  {s.state === 'approved' && (s.reflected ? ' ・ パックの zip に入っている' : ' ・ zip への反映待ち')}
+                </div>
+                {(s.review_note || s.inspect_note) && <p class="summary small error">{s.inspect_note ? `検査で弾かれました: ${s.inspect_note}` : `却下の理由: ${s.review_note}`}</p>}
               </li>
             ))}
           </ul>
