@@ -3,6 +3,9 @@ import { Notice } from './layout';
 import { formatDate, formatSize } from '../lib/util';
 import { resolveRequires, type PackRow } from '../lib/catalog';
 
+// データビューア（/viewer/）でアーカイブを開く URL（7474/SRC の docs/gui/dataviewer.md）。ID は src/routes/viewer.ts の viewerId
+export const viewerUrl = (type: 'scenarios' | 'packs', id: string) => `/viewer/archive?id=${encodeURIComponent(`${type}/${id}`)}`;
+
 export type ListItem = {
   slug: string; title: string; author: string | null; handle: string; updated_at: number;
   size: number | null; description: string | null; plays: number | null;
@@ -43,8 +46,9 @@ export function Home(props: { q: string; latest: ListItem[]; popular: ListItem[]
             <div class="actions">
               <a class="button primary" href="/play/">SRC#Web で遊ぶ</a>
               <a class="button" href="/my/scenarios/new">シナリオを投稿する</a>
+              <a class="button" href="/packs">素材を投稿する</a>
             </div>
-            <p class="tools">道具：<a href="/check">チェッカー</a>（シナリオ・データの書き方を確かめる）・<a href="/viewer/">データビューア</a>（ユニット・パイロットなどのデータを見る）・<a href="/packs">共有パック</a>（シナリオが使う汎用の素材）</p>
+            <p class="tools">道具：<a href="/check">チェッカー</a>（シナリオ・データの書き方を確かめる）・<a href="/viewer/">データビューア</a>（データ・画像・音を見る）・<a href="/packs">共有パック</a>（シナリオが使う素材。だれでも作れ、投稿できる）</p>
           </section>
           {props.popular.length > 0 && (
             <section>
@@ -89,6 +93,7 @@ export function ScenarioPage(props: {
         <div class="actions">
           {latest && <a class="button primary" href={`/play/?play=${encodeURIComponent(s.slug)}`}>SRC#Web で遊ぶ</a>}
           {latest && <a class="button" href={`/scenarios/${s.slug}/download`}>ダウンロード（{formatSize(latest.size)}）</a>}
+          {latest && s.visibility === 'public' && !s.hidden && <a class="button" href={viewerUrl('scenarios', s.slug)}>データビューアで見る</a>}
           {props.canEdit && <a class="button" href={`/my/scenarios/${s.slug}`}>編集・新しい版を上げる</a>}
         </div>
       )}
@@ -150,7 +155,16 @@ export function UserPage(props: { handle: string; items: ListItem[] }) {
   );
 }
 
-export function MePage(props: { handle: string; termsAccepted: boolean; items: (ListItem & { visibility: string; hidden: number })[]; error?: string; saved?: boolean }) {
+export type MyPack = { id: string; title: string; role: string; pending: number; dirty: number };
+export type MySubmission = {
+  id: number; pack_id: string; pack_title: string; title: string; state: string; created_at: number;
+  reviewed_at: number | null; review_note: string | null; inspect_note: string | null; reflected: number;
+};
+
+export function MePage(props: {
+  handle: string; termsAccepted: boolean; items: (ListItem & { visibility: string; hidden: number })[]; error?: string; saved?: boolean;
+  packs?: MyPack[]; submissions?: MySubmission[];
+}) {
   return (
     <>
       <section>
@@ -187,9 +201,50 @@ export function MePage(props: { handle: string; termsAccepted: boolean; items: (
           </ul>
         )}
       </section>
+      <section>
+        <h2>管理しているパック</h2>
+        <p><a class="button" href="/my/packs/new">パックを作る</a></p>
+        {(props.packs ?? []).length === 0 ? <p class="muted">ありません。</p> : (
+          <ul class="scenario-list">
+            {props.packs!.map(p => (
+              <li>
+                <a class="title" href={`/my/packs/${p.id}`}>{p.title}</a>
+                <span class="list-badges">
+                  {p.role === 'owner' && <span class="badge">作成者</span>}
+                  {p.pending > 0 && <span class="badge stopped">承認待ち {p.pending}</span>}
+                  {p.dirty ? <span class="badge">zip に未反映</span> : null}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+      <section>
+        <h2>パックへの投稿</h2>
+        {(props.submissions ?? []).length === 0 ? <p class="muted">まだありません。素材は<a href="/packs">共有パック</a>の頁から投稿します。</p> : (
+          <ul class="scenario-list">
+            {props.submissions!.map(s => (
+              <li>
+                <a class="title" href={`/my/submissions/${s.id}`}>{s.title}</a>
+                <span class="list-badges"><span class={`badge${s.state === 'rejected' ? ' stopped' : ''}`}>{SUBMISSION_STATES[s.state] ?? s.state}</span></span>
+                <div class="meta">
+                  <a href={`/packs/${s.pack_id}`}>{s.pack_title}</a> ・ 投稿 {formatDate(s.created_at)}
+                  {s.reviewed_at && <> ・ {s.state === 'approved' ? '承認' : s.state === 'rejected' ? '却下' : '更新'} {formatDate(s.reviewed_at)}</>}
+                  {s.state === 'approved' && (s.reflected ? ' ・ パックの zip に入っている' : ' ・ zip への反映待ち')}
+                </div>
+                {(s.review_note || s.inspect_note) && <p class="summary small error">{s.inspect_note ? `検査で弾かれました: ${s.inspect_note}` : `却下の理由: ${s.review_note}`}</p>}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </>
   );
 }
+
+export const SUBMISSION_STATES: Record<string, string> = {
+  uploading: 'アップロード中', inspecting: '検査中', pending: '承認待ち', approved: '承認', rejected: '却下・弾かれた', withdrawn: '取り下げ', retired: 'すべて差し替え済み',
+};
 
 export type ScenarioForm = { slug: string; title: string; author: string; description: string; license: string; tags: string; visibility: string };
 
@@ -255,7 +310,7 @@ export function EditPage(props: {
         <h2>新しい版を上げる</h2>
         <p>シナリオのフォルダを zip にしたものを選んでください（1 GB まで）。上げる前に、ブラウザの中で zip の中身（.eve があるか、実行ファイルが無いか など）を確かめます。上げると、すぐに公開されます。</p>
         <p>あわせて、データ・イベントの書き方（srcsharp lint と同じ検査）、Call の飛び先のラベルや include するファイルがあるか、画像・音などの素材のファイルがあるかを確かめられます。どこまで確かめるかは下で選べます。素材が無いことは知らせるだけで、上げるのは止めません。</p>
-        <form id="upload" class="form" data-slug={props.slug} data-direct={props.directUpload ? '1' : '0'} data-system-archives={JSON.stringify(systemArchives)}>
+        <form id="upload" class="form" data-slug={props.slug} data-create-url={`/api/scenarios/${props.slug}/versions`} data-fields="note" data-direct={props.directUpload ? '1' : '0'} data-system-archives={JSON.stringify(systemArchives)}>
           <input type="file" name="file" accept=".zip,application/zip" required />
           <label>この版の説明（任意）<input name="note" maxlength={200} /></label>
           <label>上げる前の確かめ
@@ -275,6 +330,7 @@ export function EditPage(props: {
           <label class="check lint-confirm" hidden><input type="checkbox" name="lintConfirm" /> 問題があっても上げる</label>
         </form>
         <script src="/static/lint-ui.js" defer></script>
+        <script src="/static/uploader.js" defer></script>
         <script src="/static/upload.js" defer></script>
       </section>
       <section>
@@ -340,56 +396,6 @@ export function EditPage(props: {
 const STATE_LABELS: Record<string, string> = {
   uploading: 'アップロード中', inspecting: '検査中', published: '公開', rejected: '弾かれた', withdrawn: '取り下げ',
 };
-
-export function PacksPage(props: { packs: { id: string; title: string; source_name: string; size: number; is_default: number; withdrawn: number }[] }) {
-  return (
-    <section>
-      <h1>共有パック</h1>
-      <p>シナリオと一緒に読み込んで使う素材です。「既定」のものはすべてのシナリオで使います（投稿者が外せます）。</p>
-      <ul class="scenario-list">
-        {props.packs.map(p => (
-          <li>
-            <a class="title" href={`/packs/${p.id}`}>{p.title}</a>
-            <span class="list-badges">
-              {p.is_default ? <span class="badge">既定</span> : null}
-              {p.withdrawn ? <span class="badge stopped">取り下げ</span> : null}
-            </span>
-            <div class="meta">{p.source_name} ・ {formatSize(p.size)}</div>
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
-
-export function PackPage(props: {
-  p: { id: string; title: string; description: string | null; source_name: string; source_url: string | null; license: string; size: number; version: string; is_default: number; withdrawn: number; updated_at: number };
-  takedowns: { target_id: string; reason: string; created_at: number }[];
-}) {
-  const p = props.p;
-  return (
-    <section>
-      <h1>{p.title}</h1>
-      {p.withdrawn ? <Notice kind="error">配布を止めています。</Notice> : null}
-      {p.description && <p class="pre">{p.description}</p>}
-      {!p.withdrawn && (
-        <div class="actions">
-          <a class="button" href={`/files/packs/${p.id}/${p.version}.zip`} download={`${p.id}.zip`}>ダウンロード（{formatSize(p.size)}）</a>
-        </div>
-      )}
-      <dl>
-        <dt>配布元</dt><dd>{p.source_url ? <a href={p.source_url}>{p.source_name}</a> : p.source_name}</dd>
-        <dt>条件</dt><dd class="pre">{p.license}</dd>
-        <dt>大きさ</dt><dd>{formatSize(p.size)}（版 {p.version}・{formatDate(p.updated_at)}）</dd>
-        <dt>既定</dt><dd>{p.is_default ? 'すべてのシナリオで使う' : '投稿者が選んだシナリオだけで使う'}</dd>
-      </dl>
-      <h2>取り下げた記録</h2>
-      {props.takedowns.length === 0 ? <p class="muted">ありません。</p> : (
-        <ul>{props.takedowns.map(t => <li>{formatDate(t.created_at)} {t.target_id}: {t.reason}</li>)}</ul>
-      )}
-    </section>
-  );
-}
 
 export function Simple(props: { title: string; children: Child }) {
   return <section><h1>{props.title}</h1>{props.children}</section>;

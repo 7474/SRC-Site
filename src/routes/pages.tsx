@@ -2,7 +2,7 @@
 import { Hono, type Context } from 'hono';
 import type { AppEnv } from '../env';
 import { Layout, Notice } from '../views/layout';
-import { EditPage, Home, MePage, NewScenarioPage, PackPage, PacksPage, ScenarioPage, Simple, UserPage, type ListItem, type ScenarioForm } from '../views/pages';
+import { EditPage, Home, MePage, NewScenarioPage, ScenarioPage, Simple, UserPage, type ListItem, type MyPack, type MySubmission, type ScenarioForm } from '../views/pages';
 import { Rights, Terms } from '../views/about';
 import { CheckPage, type CheckPack } from '../views/check';
 import { canEdit, canView, getScenario, LIST_SELECT, requireUser } from './common';
@@ -107,24 +107,9 @@ pages.get('/users/:handle', async c => {
   return render(c, handle, <UserPage handle={handle} items={items} />);
 });
 
-pages.get('/packs', async c => {
-  const packs = (await c.env.DB.prepare('SELECT id, title, source_name, size, is_default, withdrawn FROM packs ORDER BY priority, id').all<any>()).results;
-  return render(c, '共有パック', <PacksPage packs={packs} />);
-});
-
-pages.get('/packs/:id', async c => {
-  const p = await c.env.DB.prepare('SELECT * FROM packs WHERE id = ?').bind(c.req.param('id')).first<any>();
-  if (!p) {
-    return notFound(c);
-  }
-  const takedowns = (await c.env.DB.prepare("SELECT target_id, reason, created_at FROM takedowns WHERE (target_type = 'pack' AND target_id = ?1) OR (target_type = 'pack_file' AND target_id LIKE ?1 || ':%') ORDER BY created_at DESC")
-    .bind(p.id).all<any>()).results;
-  return render(c, p.title, <PackPage p={p} takedowns={takedowns} />);
-});
-
 // データ・シナリオのチェッカー（ログインは要らない）。汎用データは公開しているパックから選ぶ
 pages.get('/check', async c => {
-  const packs = (await c.env.DB.prepare('SELECT id, title, is_default, version FROM packs WHERE withdrawn = 0 ORDER BY priority, id').all<CheckPack>()).results;
+  const packs = (await c.env.DB.prepare("SELECT id, title, is_default, version FROM packs WHERE withdrawn = 0 AND r2_key != '' ORDER BY priority, id").all<CheckPack>()).results;
   return render(c, 'データ・シナリオのチェック', <CheckPage packs={packs} />);
 });
 
@@ -136,7 +121,22 @@ pages.get('/about/rights', c => render(c, '権利者の方へ', <Rights reportUr
 pages.get('/my', requireUser, async c => {
   const user = c.get('user')!;
   const items = (await c.env.DB.prepare(`${LIST_SELECT} WHERE s.owner_id = ? ORDER BY s.updated_at DESC`).bind(user.id).all<any>()).results;
-  return render(c, '設定', <MePage handle={user.handle} termsAccepted={Boolean(user.terms_accepted_at)} items={items} saved={c.req.query('saved') === '1'} />);
+  const [packs, submissions] = await c.env.DB.batch([
+    c.env.DB.prepare(
+      `SELECT p.id, p.title, m.role, p.revision != p.built_revision AS dirty,
+              (SELECT COUNT(*) FROM pack_submissions s WHERE s.pack_id = p.id AND s.state = 'pending') AS pending
+         FROM pack_managers m JOIN packs p ON p.id = m.pack_id WHERE m.user_id = ? ORDER BY p.title`,
+    ).bind(user.id),
+    c.env.DB.prepare(
+      `SELECT s.id, s.pack_id, p.title AS pack_title, s.title, s.state, s.created_at, s.reviewed_at, s.review_note, s.inspect_note,
+              p.revision = p.built_revision AND p.r2_key != '' AS reflected
+         FROM pack_submissions s JOIN packs p ON p.id = s.pack_id WHERE s.user_id = ? ORDER BY s.created_at DESC LIMIT 100`,
+    ).bind(user.id),
+  ]);
+  return render(c, '設定', (
+    <MePage handle={user.handle} termsAccepted={Boolean(user.terms_accepted_at)} items={items} saved={c.req.query('saved') === '1'}
+      packs={packs.results as MyPack[]} submissions={submissions.results as MySubmission[]} />
+  ));
 });
 
 pages.post('/my', requireUser, async c => {
@@ -184,7 +184,8 @@ async function editPage(c: Context<AppEnv>, slug: string, extra: { error?: strin
   }
   const versions = (await c.env.DB.prepare('SELECT id, number, state, size, created_at, published_at, note, inspect_note, root, eve, requires, excludes FROM versions WHERE scenario_id = ? ORDER BY number DESC')
     .bind(s.id).all<any>()).results;
-  const packs = (await c.env.DB.prepare('SELECT id, title, is_default, priority, withdrawn, version FROM packs WHERE withdrawn = 0 ORDER BY priority, id').all<any>()).results;
+  // まだ zip の無いパック（利用者が作り、一度も反映していないもの）は選べない
+  const packs = (await c.env.DB.prepare("SELECT id, title, is_default, priority, withdrawn, version, r2_key FROM packs WHERE withdrawn = 0 AND r2_key != '' ORDER BY priority, id").all<any>()).results;
   const form = extra.form ?? {
     slug: s.slug, title: s.title, author: s.author ?? '', description: s.description ?? '', license: s.license ?? '',
     tags: parseJsonArray(s.tags).join(' '), visibility: s.visibility,

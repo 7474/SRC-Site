@@ -4,7 +4,14 @@ import { parseJsonArray } from './util';
 export type PackRow = {
   id: string; title: string; description: string | null; source_name: string; source_url: string | null; license: string;
   is_default: number; priority: number; root: string | null; version: string; r2_key: string; size: number; withdrawn: number;
+  /** 'site'（運営が配布物から作る）| 'community'（利用者が作り、投稿を承認して組む）。古い行・テストでは省く */
+  kind?: string;
 };
+
+/** 配れるパック（取り下げておらず、zip がある。利用者が作ったパックは一度も組んでいなければ zip が無い） */
+export function usablePack(p: PackRow): boolean {
+  return !p.withdrawn && p.r2_key !== '';
+}
 
 export type PlayableRow = {
   slug: string; title: string; author: string | null; license: string | null; description: string | null;
@@ -18,7 +25,7 @@ export type CatalogEntry = {
 
 /** シナリオが重ねるパック: サイトの既定 − 外したもの ＋ 足したもの を、priority の順に（後ほど優先） */
 export function resolveRequires(packs: PackRow[], requires: string[], excludes: string[]): string[] {
-  const available = new Map(packs.filter(p => !p.withdrawn).map(p => [p.id, p]));
+  const available = new Map(packs.filter(usablePack).map(p => [p.id, p]));
   const ids = new Set<string>();
   for (const p of available.values()) {
     if (p.is_default && !excludes.includes(p.id)) {
@@ -62,8 +69,13 @@ export function catalog(name: string, scenarios: PlayableRow[], packs: PackRow[]
   return {
     format: 1,
     name,
-    entries: [...entries, ...packs.filter(p => used.has(p.id) && !p.withdrawn).map(packEntry)],
+    entries: [...entries, ...packs.filter(p => used.has(p.id) && usablePack(p)).map(packEntry)],
   };
+}
+
+/** zip の URL（lint・チェッカーが汎用データを読むときに使う） */
+export function archiveUrls(packs: PackRow[], ids: string[]): string[] {
+  return ids.map(id => packs.find(p => p.id === id)).filter((p): p is PackRow => Boolean(p)).map(p => `/files/packs/${p.id}/${p.version}.zip`);
 }
 
 export const PLAYABLE_SELECT = `

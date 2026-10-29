@@ -1,5 +1,6 @@
-// 新しい版のアップロード（/my/scenarios/:slug）。
-// 1. zip の目次をブラウザで検査する（precheck.js。Worker の検査と同じ規則）
+// 新しい版のアップロード（/my/scenarios/:slug）と、パックへの投稿（/my/packs/:id/submit。data-kind="resource"）。
+// 上げる先は data-create-url、一緒に送る入力は data-fields（カンマ区切りの name）。アップロードは public/uploader.js
+// 1. zip の目次をブラウザで検査する（precheck.js。Worker の検査と同じ規則。素材は .eve が要らない）
 // → 1'. データとイベントを lint する（/lint/srclint.js。srcsharp lint と同じ検査と、ラベル・include・素材の参照の静的解析）
 //      どこまで確かめるかは投稿者が選ぶ（lintLevel: stop＝エラー・警告があれば止める / warn＝表示して上げる / off＝確かめない）。素材が無いこと（info）では止めない
 // → 2. 大きさを送って版を作る
@@ -13,6 +14,10 @@
   const status = form.querySelector('.status');
   const progress = form.querySelector('progress');
   const button = form.querySelector('button[type=submit]');
+  const { json, postJson, putPart, wait } = window.SrcUpload;
+  const resource = form.dataset.kind === 'resource';
+  // lint はシナリオだけ（素材の投稿の画面には lint の選択が無い）
+  const hasLint = Boolean(form.lintLevel);
   const lintBox = form.querySelector('.lint');
   const lintConfirm = form.querySelector('.lint-confirm');
   const lintCancel = form.querySelector('.lint-cancel');
@@ -21,6 +26,9 @@
     status.classList.toggle('error', Boolean(error));
   };
   const clearLint = () => {
+    if (!hasLint) {
+      return;
+    }
     lintBox.hidden = true;
     lintConfirm.hidden = true;
     form.lintConfirm.checked = false;
@@ -29,6 +37,9 @@
   form.file.addEventListener('change', clearLint);
   // 確かめ方は次の投稿でも使う（保存できなくても既定のまま使える）
   try {
+    if (!hasLint) {
+      throw new Error('lint なし');
+    }
     const saved = JSON.parse(localStorage.getItem('upload.lint') || '{}');
     if ([...form.lintLevel.options].some(o => o.value === saved.level)) {
       form.lintLevel.value = saved.level;
@@ -37,7 +48,7 @@
       form.lintAssets.checked = saved.assets;
     }
   } catch {}
-  for (const input of [form.lintLevel, form.lintAssets]) {
+  for (const input of hasLint ? [form.lintLevel, form.lintAssets] : []) {
     input.addEventListener('change', () => {
       clearLint();
       try {
@@ -61,12 +72,12 @@
     try {
       show('zip の中身を確かめています…');
       const { precheck } = await import('/static/precheck.js');
-      const checked = await precheck(file);
+      const checked = await precheck(file, resource ? 'resource' : 'scenario');
       if (!checked.ok) {
         show(`この zip は上げられません: ${checked.reason}`, true);
         return;
       }
-      const level = form.lintLevel.value;
+      const level = hasLint ? form.lintLevel.value : 'off';
       let found = [];
       if (level !== 'off' && !form.lintConfirm.checked) {
         found = await lint(file, form.lintAssets.checked);
@@ -86,48 +97,41 @@
           return;
         }
       }
-      const turnstile = form.querySelector('[name="cf-turnstile-response"]')?.value;
-      const created = await json(await fetch(`/api/scenarios/${encodeURIComponent(form.dataset.slug)}/versions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ size: file.size, note: form.note.value, turnstile }),
-      }));
+      const body = { size: file.size, turnstile: form.querySelector('[name="cf-turnstile-response"]')?.value };
+      for (const name of (form.dataset.fields || 'note').split(',')) {
+        const input = form.elements[name];
+        body[name] = input.type === 'checkbox' ? input.checked : input.value;
+      }
+      const created = await postJson(form.dataset.createUrl, body);
+      const label = created.number ? `第 ${created.number} 版` : 'zip';
       const parts = [];
       for (let n = 1; n <= created.parts; n++) {
-        show(`第 ${created.number} 版を上げています…（${n}／${created.parts}）`);
+        show(`${label}を上げています…（${n}／${created.parts}）`);
         const start = (n - 1) * created.partSize;
         const blob = file.slice(start, Math.min(file.size, start + created.partSize));
-        const etag = await putPart(`/api/versions/${created.versionId}/parts/${n}`, blob,
+        const etag = await putPart(`${created.partsBase}/parts/${n}`, blob,
           loaded => (progress.value = (start + loaded) / file.size * 100));
         parts.push({ partNumber: n, etag });
       }
       show('検査しています…');
-      await json(await fetch(`/api/versions/${created.versionId}/complete`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ parts }),
-      }));
-      for (let i = 0; i < 600; i++) {
-        await new Promise(r => setTimeout(r, 2000));
-        const v = await json(await fetch(`/api/versions/${created.versionId}`));
-        if (v.state === 'published') {
-          const href = `/my/scenarios/${encodeURIComponent(v.slug)}?saved=1`;
-          if (!found.length) {
-            show(`第 ${v.number} 版を公開しました。`);
-            location.href = href;
-            return;
-          }
-          // 確かめた結果を読めるように、頁は移らない
-          show(`第 ${v.number} 版を公開しました。確かめた結果は下のとおりです。`);
-          const link = status.appendChild(document.createElement('a'));
-          link.href = href;
-          link.textContent = ' 版の一覧へ';
+      await postJson(`${created.partsBase}/complete`, { parts });
+      const v = await wait(created.partsBase);
+      if (v && v.done) {
+        if (!found.length) {
+          show(v.message);
+          location.href = v.href;
           return;
         }
-        if (v.state === 'rejected') {
-          show(`検査で弾かれました: ${v.note}`, true);
-          return;
-        }
+        // 確かめた結果を読めるように、頁は移らない
+        show(`${v.message}確かめた結果は下のとおりです。`);
+        const link = status.appendChild(document.createElement('a'));
+        link.href = v.href;
+        link.textContent = ' 版の一覧へ';
+        return;
+      }
+      if (v) {
+        show(`検査で弾かれました: ${v.note}`, true);
+        return;
       }
       show('検査に時間がかかっています。しばらくしてから頁を読み込み直してください。');
     } catch (err) {
@@ -147,54 +151,5 @@
     SrcLint.renderTable(lintBox, found);
     lintConfirm.hidden = !confirm;
   }
-
-  async function json(response) {
-    const body = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(body.error || `エラー（${response.status}）`);
-    }
-    return body;
-  }
-
-  // パートを上げ、ETag を返す。上げ先（R2 の署名付き URL か Worker）はパートごとに取る。通信が切れたら少し待って上げ直す
-  async function putPart(api, blob, onProgress) {
-    const tries = 5;
-    for (let i = 1; ; i++) {
-      try {
-        const target = await json(await fetch(api));
-        return await put(target, blob, onProgress);
-      } catch (err) {
-        if (i >= tries || err.retry === false) {
-          throw err;
-        }
-        await new Promise(r => setTimeout(r, 2000 * i));
-      }
-    }
-  }
-
-  // fetch では送った量が分からないので XMLHttpRequest で送る
-  // R2 へ直接上げたときは応答の ETag ヘッダ（バケットの CORS で見せている）、Worker を通したときは応答の JSON の etag
-  function put(target, blob, onProgress) {
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open('PUT', target.url);
-      xhr.responseType = target.direct ? 'text' : 'json';
-      xhr.upload.onprogress = e => e.lengthComputable && onProgress(e.loaded);
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          const etag = target.direct ? xhr.getResponseHeader('ETag') : xhr.response?.etag;
-          etag ? resolve(etag) : reject(new Error('アップロードに失敗しました（ETag がありません）'));
-          return;
-        }
-        const err = new Error((!target.direct && xhr.response?.error) || `アップロードに失敗しました（${xhr.status}）`);
-        // 4xx（大きさが違うなど）は上げ直しても変わらない
-        err.retry = xhr.status >= 500;
-        reject(err);
-      };
-      xhr.onerror = () => reject(new Error('アップロードに失敗しました（通信）'));
-      xhr.send(blob);
-    });
-  }
-
 
 })();
