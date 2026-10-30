@@ -57,8 +57,8 @@ SRCSHARP="dotnet <7474/SRC>/out/srcsharp/srcsharp.dll" BASIC_DATA=<7474/SRC>/SRC
    - 投稿: 「管理者だけが投稿する」
 2. パックの頁の「このパックに投稿する」から `sandbox-pack.zip` を上げる
 3. `/my` の「パックへの投稿」から投稿を開き、中身を見て「承認して zip に反映する」。管理の頁で反映が終わるのを待つ
-4. `/my/scenarios/new` でシナリオを作る（ID `sandbox`、文は下）。次の画面で `sandbox-scenario.zip` を上げる
-5. 同じ画面の「一緒に使う共有パック」で「サンドボックス素材」に印を付けて保存する
+4. `/my/scenarios/new` でシナリオを作る（ID `sandbox`、文は下）
+5. 次の画面の「新しい版を上げる」で `sandbox-scenario.zip` を選び、「この版で一緒に使う共有パック」で既定のパックに印を付けたまま「サンドボックス素材」にも印を付けて上げる（上げる前の確かめも、ここで選んだパックのスペシャルパワーと素材を使う）
 
 手元の `wrangler dev`（`DEV_LOGIN=1`）では、`node scripts/register-sandbox.mjs` が 1〜5 をまとめて行う。
 

@@ -294,10 +294,15 @@ export function EditPage(props: {
   const latestPublished = props.versions.find(v => v.state === 'published');
   const requires = latestPublished ? JSON.parse(latestPublished.requires) as string[] : [];
   const excludes = latestPublished ? JSON.parse(latestPublished.excludes) as string[] : [];
-  // lint が汎用データ（Data/System の sp.txt など）を読むパック。遊ぶときに重ねるものと同じ
-  const systemArchives = resolveRequires(props.packs as PackRow[], requires, excludes)
-    .map(id => props.packs.find(p => p.id === id)!)
-    .map(p => `/files/packs/${p.id}/${p.version}.zip`);
+  // 新しい版で一緒に使うパックの初め（公開中の版と同じ。版が無ければ既定のパック）
+  const chosen = new Set(resolveRequires(props.packs as PackRow[], requires, excludes));
+  // 上げる版で一緒に使うパックの選び。lint はここで選んだパックから汎用データ（Data/System の sp.txt など）と素材を探す
+  const packChoices = (name: string) => props.packs.map(p => (
+    <label class="check">
+      <input type="checkbox" name={name} value={p.id} checked={chosen.has(p.id)} data-archive={`/files/packs/${p.id}/${p.version}.zip`} />
+      {p.title}{p.is_default ? '（既定）' : ''}
+    </label>
+  ));
   return (
     <>
       <section>
@@ -310,9 +315,14 @@ export function EditPage(props: {
         <h2>新しい版を上げる</h2>
         <p>シナリオのフォルダを zip にしたものを選んでください（1 GB まで）。上げる前に、ブラウザの中で zip の中身（.eve があるか、実行ファイルが無いか など）を確かめます。上げると、すぐに公開されます。</p>
         <p>あわせて、データ・イベントの書き方（srcsharp lint と同じ検査）、Call の飛び先のラベルや include するファイルがあるか、画像・音などの素材のファイルがあるかを確かめられます。どこまで確かめるかは下で選べます。素材が無いことは知らせるだけで、上げるのは止めません。</p>
-        <form id="upload" class="form" data-slug={props.slug} data-create-url={`/api/scenarios/${props.slug}/versions`} data-fields="note" data-direct={props.directUpload ? '1' : '0'} data-system-archives={JSON.stringify(systemArchives)}>
+        <form id="upload" class="form" data-slug={props.slug} data-create-url={`/api/scenarios/${props.slug}/versions`} data-fields="note" data-direct={props.directUpload ? '1' : '0'}>
           <input type="file" name="file" accept=".zip,application/zip" required />
           <label>この版の説明（任意）<input name="note" maxlength={200} /></label>
+          <fieldset class="pack-choice">
+            <legend>この版で一緒に使う共有パック</legend>
+            <p class="muted">遊ぶときに重ねるパックです。上げる前の確かめも、ここで選んだパックの汎用データ（スペシャルパワーなど）と素材を使います。{latestPublished ? '初めは公開中の版と同じです。' : ''}</p>
+            {packChoices('pack')}
+          </fieldset>
           <label>上げる前の確かめ
             <select name="lintLevel">
               <option value="stop">問題があれば止める（確かめてから上げる）</option>
@@ -364,15 +374,10 @@ export function EditPage(props: {
       </section>
       {latestPublished && (
         <section>
-          <h2>一緒に使う共有パック（最新の版）</h2>
-          <p class="muted">新しい版を上げると、この設定を引き継ぎます。</p>
+          <h2>公開中の版（第 {latestPublished.number} 版）で一緒に使う共有パック</h2>
+          <p class="muted">上げ直さずに、いま公開している版のパックだけを変えるときに使います。新しい版のパックは、上の「新しい版を上げる」で選びます。</p>
           <form method="post" action={`/my/versions/${latestPublished.id}/packs`} class="form">
-            {props.packs.map(p => (
-              <label class="check">
-                <input type="checkbox" name="pack" value={p.id} checked={p.is_default ? !excludes.includes(p.id) : requires.includes(p.id)} />
-                {p.title}{p.is_default ? '（既定）' : ''}
-              </label>
-            ))}
+            {packChoices('pack')}
             <button type="submit">保存</button>
           </form>
         </section>

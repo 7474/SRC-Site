@@ -264,8 +264,8 @@ pages.post('/my/versions/:id/packs', requireUser, async c => {
   const form = await c.req.parseBody({ all: true });
   const chosen = new Set((Array.isArray(form.pack) ? form.pack : form.pack ? [form.pack] : []).map(String));
   const packs = (await c.env.DB.prepare('SELECT id, is_default FROM packs').all<{ id: string; is_default: number }>()).results;
-  const requires = packs.filter(p => !p.is_default && chosen.has(p.id)).map(p => p.id);
-  const excludes = packs.filter(p => p.is_default && !chosen.has(p.id)).map(p => p.id);
+  const { packSettings } = await import('../lib/catalog');
+  const { requires, excludes } = packSettings(packs, chosen);
   await c.env.DB.prepare('UPDATE versions SET requires = ?, excludes = ? WHERE id = ?').bind(JSON.stringify(requires), JSON.stringify(excludes), found.v.id).run();
   return c.redirect(`/my/scenarios/${found.s.slug}?saved=1`);
 });

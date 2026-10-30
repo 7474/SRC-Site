@@ -1,7 +1,7 @@
 // JSON の API（カタログ・投稿）
 import { Hono } from 'hono';
 import type { AppEnv, User } from '../env';
-import { catalog, PLAYABLE_SELECT, type PackRow, type PlayableRow } from '../lib/catalog';
+import { catalog, packSettings, PLAYABLE_SELECT, type PackRow, type PlayableRow } from '../lib/catalog';
 import { verifyTurnstile } from '../lib/turnstile';
 import { canPresign } from '../lib/presign';
 import { finishUpload, PART_SIZE, partCount, partTarget, putPart, startUpload, validPart } from '../lib/multipart';
@@ -70,7 +70,7 @@ api.post('/scenarios/:slug/versions', async c => {
   if (!user.terms_accepted_at) {
     return c.json({ error: '利用規約に同意してください（設定の頁）' }, 403);
   }
-  const body = await c.req.json<{ size?: number; note?: string; turnstile?: string }>().catch(() => ({} as any));
+  const body = await c.req.json<{ size?: number; note?: string; packs?: unknown; turnstile?: string }>().catch(() => ({} as any));
   const size = Number(body.size);
   if (!Number.isInteger(size) || size <= 0 || size > MAX_FILE) {
     return c.json({ error: 'zip は 1 GB までです' }, 400);
@@ -97,6 +97,12 @@ api.post('/scenarios/:slug/versions', async c => {
      RETURNING id`,
   ).bind(s.id, number, key, size, String(body.note ?? '').slice(0, 200) || null, now()).first<{ id: number }>();
   const versionId = row!.id;
+  // 上げる画面で選んだパック（送られたとき）。選べるのは zip のあるパック（編集の頁に出すもの）だけ
+  if (Array.isArray(body.packs)) {
+    const packs = (await c.env.DB.prepare("SELECT id, is_default FROM packs WHERE withdrawn = 0 AND r2_key != ''").all<{ id: string; is_default: number }>()).results;
+    const { requires, excludes } = packSettings(packs, body.packs.map(String));
+    await c.env.DB.prepare('UPDATE versions SET requires = ?, excludes = ? WHERE id = ?').bind(JSON.stringify(requires), JSON.stringify(excludes), versionId).run();
+  }
   const uploadId = await startUpload(c.env, key);
   await c.env.DB.prepare('UPDATE versions SET upload_id = ? WHERE id = ?').bind(uploadId, versionId).run();
   return c.json({ id: versionId, versionId, number, partSize: PART_SIZE, parts: partCount(size), partsBase: `/api/versions/${versionId}` });
