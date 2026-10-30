@@ -1,0 +1,51 @@
+@サンドボックス
+# サンドボックス：SRC#Site の動作確認用のシナリオ
+# 生成AI（Claude）で作ったテスト用のもの。画像・音楽・効果音は共有パック「サンドボックス素材」（sandbox-assets）から読み込む
+
+プロローグ:
+# インターミッションの BGM
+RenameBGM Intermission sandbox_support.mid
+# 動作確認（sandbox/checks/）のデータ
+Load 確認
+Exit
+
+スタート:
+ChangeMap sandbox.map
+Create 味方 サンドボックス機 0 アオイ 10 3 4
+Create 味方 テスト支援機 0 ミドリ 10 3 6
+Create 敵 練習用標的 0 標的 1 9 5
+StartBGM sandbox_title.mid
+
+Talk システム
+【お知らせ】このシナリオは、SRC#Site の動作確認のために生成AIで作ったテスト用のものです。
+画像・音楽・効果音も、すべて生成AIがプログラムで作ったテスト用のものです。
+End
+
+Talk アオイ
+アオイです。わたしの顔の絵は、シナリオではなく共有パック「サンドボックス素材」から読み込んでいます。
+Talk ミドリ
+ミドリです。いま流れている曲も、共有パックの MIDI（sandbox_title.mid）です。
+End
+
+PlaySound sandbox_beep.wav
+Talk システム
+いまの音は、共有パックの効果音（Sound/sandbox_beep.wav）です。
+右にいる「練習用標的」を倒すと、インターミッションに進みます。
+End
+Exit
+
+全滅 敵:
+StartBGM sandbox_title.mid
+Talk アオイ
+標的を倒しました。戦闘の BGM は鳴りましたか？
+Talk ミドリ
+データビューアでは、わたしたちのデータから BGM をその場で鳴らせます。
+End
+Talk システム
+このあとインターミッションに進みます。
+セーブ・ユニットやパイロットの確認・「サンドボックスについて」を試せます。
+「動作確認」から、機能追加・不具合修正を確かめるステージを選べます（選ばずに「次のステージへ」を選ぶと終わります）。
+End
+IntermissionCommand サンドボックスについて Lib\about.eve
+IntermissionCommand 動作確認 Lib\動作確認.eve
+Continue ステージ\おわり.eve

@@ -1,0 +1,11 @@
+auto 60
+cell 10 8 right
+menu コマンド10
+auto 10
+expect message 「コマンド10」が動きました
+cell 6 5
+menu 回復
+auto 10
+expect message 段階 2 の回復（正しい動作です）
+cell 6 5
+menu 確認を終える

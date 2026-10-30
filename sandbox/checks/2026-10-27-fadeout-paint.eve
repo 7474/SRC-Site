@@ -1,0 +1,24 @@
+# 題: FadeOut の後の画面を暗いままにする
+# 日付: 2026-10-27
+# 種類: 修正
+# 関連: https://github.com/7474/SRC/issues/1328 https://github.com/7474/SRC/commit/99b510f
+# 確かめ方: 目視
+# 説明: FadeOut で暗くした後に PaintString で文字を書くと、暗い画面に文字だけが出る（直す前は、暗くする前のマップが一緒に出ていた）。
+
+スタート:
+ChangeMap sandbox.map
+Create 味方 確認用機 0 確認係 1 6 5
+Talk システム
+これから FadeOut で画面を暗くし、PaintString で文字を書きます。
+暗い画面に白い文字だけが見えれば正しい動作です。マップやユニットが見えたら誤りです。
+End
+FadeOut
+PaintString 60 200 暗い画面に、この文字だけが見えていますか？
+Refresh
+Wait 30
+Talk システム
+暗い画面に文字だけが見えていれば正しい動作です。次へ進むと画面を戻します。
+End
+ClearPicture
+FadeIn
+Continue ステージ\おわり.eve

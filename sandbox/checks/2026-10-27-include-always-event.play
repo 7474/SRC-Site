@@ -1,0 +1,5 @@
+auto 60
+expect message 常時イベント（*ターン 1 味方）が動きました（1 回目）
+expect eval 常時イベントの回数 = 1
+cell 10 8 right
+menu 確認を終える
