@@ -40,6 +40,15 @@ export function resolveRequires(packs: PackRow[], requires: string[], excludes: 
   return [...ids].sort((a, b) => (available.get(a)!.priority - available.get(b)!.priority) || a.localeCompare(b));
 }
 
+/** 選んだパックから、版の requires（既定でないもので選んだもの）と excludes（既定で外したもの）を作る */
+export function packSettings(packs: { id: string; is_default: number }[], chosen: Iterable<string>): { requires: string[]; excludes: string[] } {
+  const set = new Set(chosen);
+  return {
+    requires: packs.filter(p => !p.is_default && set.has(p.id)).map(p => p.id),
+    excludes: packs.filter(p => p.is_default && !set.has(p.id)).map(p => p.id),
+  };
+}
+
 export function scenarioEntry(row: PlayableRow, packs: PackRow[]): CatalogEntry {
   const entry: CatalogEntry = {
     id: row.slug,

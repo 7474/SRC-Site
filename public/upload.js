@@ -33,8 +33,13 @@
     lintConfirm.hidden = true;
     form.lintConfirm.checked = false;
   };
-  // 選んだ zip か確かめ方が変わったら lint の結果と確認を消す
+  // 一緒に使うパックの選び（シナリオの版だけ）。lint はここで選んだパックを読む
+  const packInputs = [...form.querySelectorAll('input[name=pack]')];
+  // 選んだ zip・確かめ方・パックが変わったら lint の結果と確認を消す
   form.file.addEventListener('change', clearLint);
+  for (const input of packInputs) {
+    input.addEventListener('change', clearLint);
+  }
   // 確かめ方は次の投稿でも使う（保存できなくても既定のまま使える）
   try {
     if (!hasLint) {
@@ -102,6 +107,9 @@
         const input = form.elements[name];
         body[name] = input.type === 'checkbox' ? input.checked : input.value;
       }
+      if (packInputs.length) {
+        body.packs = packInputs.filter(i => i.checked).map(i => i.value);
+      }
       const created = await postJson(form.dataset.createUrl, body);
       const label = created.number ? `第 ${created.number} 版` : 'zip';
       const parts = [];
@@ -141,9 +149,10 @@
     }
   });
 
-  // srcsharp lint と同じ検査（public/lint-ui.js）。汎用データと素材はこのシナリオが重ねるパックからも探す。止めたら null
+  // srcsharp lint と同じ検査（public/lint-ui.js）。汎用データと素材は、いま選んでいるパックからも探す。止めたら null
   function lint(file, assets) {
-    return SrcLint.run(file, { systemArchives: JSON.parse(form.dataset.systemArchives || '[]'), assets, show, progress, cancel: lintCancel });
+    const systemArchives = packInputs.filter(i => i.checked).map(i => i.dataset.archive);
+    return SrcLint.run(file, { systemArchives, assets, show, progress, cancel: lintCancel });
   }
 
   // 一覧を出す。confirm なら「問題があっても上げる」も出す
