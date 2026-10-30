@@ -1,24 +1,45 @@
-# 題: FadeOut の後の画面を暗いままにする
+# 題: FadeOut・WhiteOut の後の画面を塗りつぶしたままにする
 # 日付: 2026-10-27
 # 種類: 修正
 # 関連: https://github.com/7474/SRC/issues/1328 https://github.com/7474/SRC/commit/99b510f
 # 確かめ方: 目視
-# 説明: FadeOut で暗くした後に PaintString で文字を書くと、暗い画面に文字だけが出る（直す前は、暗くする前のマップが一緒に出ていた）。
+# 説明: マップを見せてから FadeOut（黒）・WhiteOut（白）で塗りつぶし、PaintString で文字を書くと、塗りつぶした画面に文字だけが出る（直す前は、塗りつぶす前のマップが一緒に出ていた）。ClearPicture と FadeIn・WhiteIn でマップが戻る。
 
-スタート:
+確認:
 ChangeMap sandbox.map
 Create 味方 確認用機 0 確認係 1 6 5
+# まずマップを見せる（塗りつぶす前の画面がマップでないと、直す前と区別できない）
+FadeIn
 Talk システム
-これから FadeOut で画面を暗くし、PaintString で文字を書きます。
-暗い画面に白い文字だけが見えれば正しい動作です。マップやユニットが見えたら誤りです。
+1. いまマップと「確認用機」が見えています。
+これから FadeOut で黒く塗りつぶし、白い文字を書きます。
 End
 FadeOut
-PaintString 60 200 暗い画面に、この文字だけが見えていますか？
+Font 16pt #ffffff
+PaintString 60 200 白い文字だけが見えますか？
 Refresh
-Wait 30
 Talk システム
-暗い画面に文字だけが見えていれば正しい動作です。次へ進むと画面を戻します。
+2. 黒い画面に白い文字だけが見えていれば正しい動作です。
+マップやユニットが一緒に見えたら誤りです（直す前の動作）。
 End
 ClearPicture
 FadeIn
-Continue ステージ\おわり.eve
+Talk システム
+3. FadeIn でマップが戻りました。
+これから WhiteOut で白く塗りつぶし、黒い文字を書きます。
+End
+WhiteOut
+Font 16pt #000000
+PaintString 60 200 黒い文字だけが見えますか？
+Refresh
+Talk システム
+4. 白い画面に黒い文字だけが見えていれば正しい動作です。
+マップやユニットが一緒に見えたら誤りです（直す前の動作）。
+End
+ClearPicture
+WhiteIn
+Font 16pt #ffffff
+Talk システム
+5. WhiteIn でマップが戻っていれば正しい動作です。インターミッションに戻ります。
+End
+Call 後片付け

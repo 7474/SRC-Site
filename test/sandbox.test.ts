@@ -55,7 +55,7 @@ describe('サンドボックス', () => {
     const list = await text('sandbox-scenario.zip', 'サンドボックス/確認一覧.md');
     for (const f of checks) {
       expect(names, f).toContain(`サンドボックス/ステージ/確認/${f}`);
-      expect(menu, f).toContain(`次ステージ = "ステージ\\確認\\${f}"`);
+      expect(menu, f).toContain(`Require ステージ\\確認\\${f}`);
       const title = /^# 題: (.+)$/m.exec(readFileSync(join('sandbox/checks', f), 'utf8'))![1];
       expect(list, f).toContain(title);
       expect(existsSync(join('sandbox/checks', f.replace(/\.eve$/, '.play'))), `${f} の .play`).toBe(true);
@@ -69,7 +69,7 @@ describe('サンドボックス', () => {
     // 本物の sandbox/ を写し、見出しの欠けた確認を足す
     cpSync('sandbox', join(dir, 'sandbox'), { recursive: true });
     cpSync('scripts', join(dir, 'scripts'), { recursive: true });
-    writeFileSync(join(dir, 'sandbox/checks/2026-01-01-broken.eve'), '# 題: 見出しが足りない\nスタート:\nContinue ステージ\\おわり.eve\n');
+    writeFileSync(join(dir, 'sandbox/checks/2026-01-01-broken.eve'), '# 題: 見出しが足りない\n確認:\nContinue\n');
     expect(() => execFileSync('python3', ['-I', join(dir, 'scripts/make-sandbox.py'), join(dir, 'out')], { stdio: 'pipe' })).toThrow(/見出しが足りない/);
   });
 
