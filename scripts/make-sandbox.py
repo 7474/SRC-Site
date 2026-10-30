@@ -242,20 +242,51 @@ def read_checks():
             raise CheckError(f"{path.name}: 見出しの日付（{meta['日付']}）と名前の日付が違う")
         if meta["種類"] not in ("修正", "追加") or meta["確かめ方"] not in ("自動", "目視"):
             raise CheckError(f"{path.name}: 種類は 修正・追加、確かめ方は 自動・目視")
-        if "Continue ステージ\\おわり.eve" not in path.read_text(encoding="utf-8"):
-            raise CheckError(f"{path.name}: 最後に Continue ステージ\\おわり.eve でインターミッションに戻す")
+        body = path.read_text(encoding="utf-8").splitlines()
+        if "確認:" not in body or "Call 後片付け" not in body:
+            raise CheckError(f"{path.name}: 「確認:」のラベルから始め、最後に Call 後片付け でインターミッションに戻す")
+        if any(line.startswith("Continue") for line in body):
+            raise CheckError(f"{path.name}: Continue は使わない（Call 後片付け で、作ったパイロットを消してから戻る）")
         checks.append({"file": path.name, **meta})
     checks.sort(key=lambda c: (c["日付"], c["file"]), reverse=True)
     return checks
 
 
+def check_pilots():
+    """動作確認のデータ（data/pilot.txt）のパイロットの名前。確認が Create で作り、後片付けで消す"""
+    names = []
+    block = []
+    for line in (CHECKS / "data" / "pilot.txt").read_text(encoding="utf-8").splitlines() + [""]:
+        if line.startswith("#"):
+            continue
+        if line.strip():
+            block.append(line.strip())
+        elif block:
+            names.append(block[0])
+            block = []
+    return names
+
+
 def check_menu(checks):
-    """インターミッションのコマンド「動作確認」。選んだ確認を、次のステージ（次ステージ）にする"""
+    """
+    インターミッションのコマンド「動作確認」。選んだ確認のファイルを Require し、このサブステージのまま「確認:」から始める。
+    確認の最後の Call 後片付け で、確認が作ったパイロット（と乗っているユニット）を消し、Continue（引数なし）でインターミッションに戻る。
+    消したものはステージ（サブステージ）が終わったときにデータから消えるので、同じ確認をもう一度選んでも Create できる
+    """
+    pilots = check_pilots()
+    leftover = " Or ".join(f"Level({p}) > 0" for p in pilots)
     lines = [
         "# インターミッションのコマンド「動作確認」（scripts/make-sandbox.py が sandbox/checks/ から作る。手で直さない）",
         "# 生成AIで作ったテスト用のシナリオの一部",
         "プロローグ:",
         "KeepBGM",
+        "# 前の確認の残り（途中で終わったときなど）があれば、片付けてから選び直してもらう",
+        f"If {leftover} Then",
+        "  Talk システム",
+        "  前の動作確認で作ったユニットが残っていたので片付けました。もう一度「動作確認」を選んでください。",
+        "  End",
+        "  Call 後片付け",
+        "EndIf",
         "Ask 確かめるものを選んでください（新しい順）",
     ]
     lines += [f"{c['日付']} {c['題']}（{c['確かめ方']}）" for c in checks]
@@ -266,11 +297,15 @@ def check_menu(checks):
             "  Talk システム",
             f"  【{c['種類']}・{c['確かめ方']}】{c['題']}",
             f"  {c['説明']}",
-            "  「次のステージへ」で始まります。終わるとインターミッションに戻ります。",
+            "  このあとすぐ始まります。終わるとインターミッションに戻ります。",
             "  End",
-            f"  次ステージ = \"ステージ\\確認\\{c['file']}\"",
+            f"  Require ステージ\\確認\\{c['file']}",
         ]
-    lines += ["EndSw", "Continue", "", "スタート:", "Exit", ""]
+    lines += ["Case Else", "  Continue", "EndSw", "Exit", "", "スタート:", "Call 確認", "Exit", ""]
+    lines += ["# 確認の後片付け：確認が作ったパイロット（と乗っているユニット）を消し、インターミッションに戻る", "後片付け:"]
+    for p in pilots:
+        lines += [f"If Level({p}) > 0 Then", f"  RemovePilot {p} 非同期", "EndIf"]
+    lines += ["Continue", ""]
     return "\n".join(lines)
 
 

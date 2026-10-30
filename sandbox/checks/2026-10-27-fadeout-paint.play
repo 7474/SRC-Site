@@ -1,1 +1,6 @@
-expect message 暗い画面に文字だけが見えていれば正しい動作です
+# 会話は auto・turns が送る。出た文で、FadeOut・FadeIn・WhiteOut・WhiteIn を順に通ったことを確かめる（画面は目視）
+expect message 1. いまマップと「確認用機」が見えています。
+expect message 2. 黒い画面に白い文字だけが見えていれば正しい動作です。
+expect message 3. FadeIn でマップが戻りました。
+expect message 4. 白い画面に黒い文字だけが見えていれば正しい動作です。
+expect message 5. WhiteIn でマップが戻っていれば正しい動作です。
