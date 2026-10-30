@@ -5,10 +5,12 @@
 
 - 出力: sandbox-scenario.zip（シナリオ「サンドボックス」）と sandbox-pack.zip（共有パック「サンドボックス素材」）
 - 文章・データは sandbox/ にある。マップ・画像・MIDI・WAV はここで作る（生成AIで作ったテスト用のもの。単純な図形と音の並び）
+- 動作確認（sandbox/checks/）は、各ファイルの見出しから、インターミッションのメニュー（Lib/動作確認.eve）と一覧（確認一覧.md）を作る
 - 同じ入力からは同じ zip ができる（日時を固定する）
 """
 import io
 import math
+import re
 import struct
 import sys
 import zipfile
@@ -210,13 +212,109 @@ def sandbox_map(width=12, height=10):
     return "\n".join(lines) + "\n"
 
 
+# ── 動作確認（sandbox/checks/README.md） ──
+
+CHECKS = SANDBOX / "checks"
+CHECK_FIELDS = ("題", "日付", "種類", "関連", "確かめ方", "説明")
+CHECK_NAME = re.compile(r"^(\d{4}-\d{2}-\d{2})-[a-z0-9-]+\.eve$")
+
+
+class CheckError(Exception):
+    pass
+
+
+def read_checks():
+    """見出し（# 項目: 値）を読む。新しい順（同じ日は名前の順）"""
+    checks = []
+    for path in sorted(CHECKS.glob("*.eve")):
+        m = CHECK_NAME.match(path.name)
+        if not m:
+            raise CheckError(f"{path.name}: 名前は YYYY-MM-DD-英小文字・数字・-.eve にする")
+        meta = {}
+        for line in path.read_text(encoding="utf-8").splitlines():
+            h = re.match(r"^#\s*([^:：]+)[:：]\s*(.+)$", line)
+            if h and h.group(1).strip() in CHECK_FIELDS:
+                meta[h.group(1).strip()] = h.group(2).strip()
+        missing = [f for f in CHECK_FIELDS if f not in meta]
+        if missing:
+            raise CheckError(f"{path.name}: 見出しが足りない（{'・'.join(missing)}）")
+        if meta["日付"] != m.group(1):
+            raise CheckError(f"{path.name}: 見出しの日付（{meta['日付']}）と名前の日付が違う")
+        if meta["種類"] not in ("修正", "追加") or meta["確かめ方"] not in ("自動", "目視"):
+            raise CheckError(f"{path.name}: 種類は 修正・追加、確かめ方は 自動・目視")
+        if "Continue ステージ\\おわり.eve" not in path.read_text(encoding="utf-8"):
+            raise CheckError(f"{path.name}: 最後に Continue ステージ\\おわり.eve でインターミッションに戻す")
+        checks.append({"file": path.name, **meta})
+    checks.sort(key=lambda c: (c["日付"], c["file"]), reverse=True)
+    return checks
+
+
+def check_menu(checks):
+    """インターミッションのコマンド「動作確認」。選んだ確認を、次のステージ（次ステージ）にする"""
+    lines = [
+        "# インターミッションのコマンド「動作確認」（scripts/make-sandbox.py が sandbox/checks/ から作る。手で直さない）",
+        "# 生成AIで作ったテスト用のシナリオの一部",
+        "プロローグ:",
+        "KeepBGM",
+        "Ask 確かめるものを選んでください（新しい順）",
+    ]
+    lines += [f"{c['日付']} {c['題']}（{c['確かめ方']}）" for c in checks]
+    lines += ["選ばずに戻る", "End", "Switch 選択"]
+    for i, c in enumerate(checks, 1):
+        lines += [
+            f"Case {i}",
+            "  Talk システム",
+            f"  【{c['種類']}・{c['確かめ方']}】{c['題']}",
+            f"  {c['説明']}",
+            "  「次のステージへ」で始まります。終わるとインターミッションに戻ります。",
+            "  End",
+            f"  次ステージ = \"ステージ\\確認\\{c['file']}\"",
+        ]
+    lines += ["EndSw", "Continue", "", "スタート:", "Exit", ""]
+    return "\n".join(lines)
+
+
+def link_label(url):
+    """https://github.com/7474/SRC/pull/1330 → 7474/SRC#1330、…/commit/32db040… → 7474/SRC@32db040"""
+    parts = url.rstrip("/").split("/")
+    if len(parts) >= 7 and parts[2] == "github.com":
+        repo = f"{parts[3]}/{parts[4]}"
+        return f"{repo}@{parts[6][:7]}" if parts[5] == "commit" else f"{repo}#{parts[6]}"
+    return url
+
+
+def check_list(checks):
+    """確認の一覧（シナリオに同梱する文書。SRC#Web の「文書」で読める）"""
+    lines = [
+        "# 動作確認の一覧",
+        "",
+        "> 生成AIで作ったテスト用のシナリオの一部です。インターミッションの「動作確認」から選んで始めます。",
+        "",
+        "| 日付 | 確かめること | 種類 | 確かめ方 | 関連 |",
+        "|---|---|---|---|---|",
+    ]
+    for c in checks:
+        links = " ".join(f"[{link_label(u)}]({u})" for u in c["関連"].split())
+        lines.append(f"| {c['日付']} | {c['題']}。{c['説明']} | {c['種類']} | {c['確かめ方']} | {links} |")
+    return "\n".join(lines) + "\n"
+
+
 def build_scenario(out):
     src = SANDBOX / "scenario"
+    checks = read_checks()
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as z:
         for path in sorted(p for p in src.rglob("*") if p.is_file()):
             add(z, path.relative_to(src).as_posix(), path.read_bytes())
         add(z, "サンドボックス/sandbox.map", sandbox_map().encode("utf-8"))
+        for c in checks:
+            add(z, f"サンドボックス/ステージ/確認/{c['file']}", (CHECKS / c["file"]).read_bytes())
+        for path in sorted((CHECKS / "lib").glob("*.eve")):
+            add(z, f"サンドボックス/Lib/確認/{path.name}", path.read_bytes())
+        for path in sorted((CHECKS / "data").glob("*.txt")):
+            add(z, f"サンドボックス/Data/確認/{path.name}", path.read_bytes())
+        add(z, "サンドボックス/Lib/動作確認.eve", check_menu(checks).encode("utf-8"))
+        add(z, "サンドボックス/確認一覧.md", check_list(checks).encode("utf-8"))
     (out / "sandbox-scenario.zip").write_bytes(buf.getvalue())
 
 

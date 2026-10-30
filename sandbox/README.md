@@ -25,29 +25,27 @@ python3 -I scripts/make-sandbox.py            # out/sandbox/ に 2 つの zip �
 | 投稿のプレビュー | 承認の前に、投稿の頁で顔・ユニットの絵、効果音を確かめる。「データビューアで見る・聞く」で MIDI も鳴らす |
 | シナリオの投稿 | `sandbox-scenario.zip` を投稿し、一緒に使う共有パックで「サンドボックス素材」を選ぶ |
 | SRC#Web で遊ぶ | パイロットの顔・ユニットの絵・BGM・効果音はシナリオに入っておらず、パックから読み込む。敵を 1 体倒すとインターミッションに進み、「次のステージへ」で終わる |
-| インターミッション | セーブ・ユニットとパイロットの確認・機体改造と、追加したコマンド「サンドボックスについて」（生成AIで作ったテスト用であることの説明）。BGM は `sandbox_support.mid` |
+| インターミッション | セーブ・ユニットとパイロットの確認・機体改造と、追加したコマンド「サンドボックスについて」（生成AIで作ったテスト用であることの説明）・「動作確認」（下）。BGM は `sandbox_support.mid` |
 | BGM | 始めると `sandbox_title.mid`。戦闘ではパイロットの BGM（`sandbox_battle.mid`）・ユニットの「ＢＧＭ」（`sandbox_support.mid`）・敵（`sandbox_enemy.mid`） |
 | データビューア | シナリオの頁の「データビューアで見る」。データの BGM のボタンで曲を鳴らし、ほかの画面へ移っても鳴り続けること。パックの、データから使っていない絵（`Bitmap/Event/Sandbox_Unused.bmp`）と音（`Sound/sandbox_unused.wav`）が見られること |
 | パックの更新 | パックに投稿を足して zip に反映し直し、SRC#Web で遊び直すと新しい版を取り直すこと |
 
-`srcsharp play`（7474/SRC の SRCSharpTools）で、画面なしで最後まで動くことを確かめている。
+### 動作確認（機能追加・不具合修正）
+
+インターミッションの「動作確認」から、SRC#・SRC#Site の機能追加・不具合修正を確かめる小さなステージを選んで始められる。終わるとインターミッションに戻るので、続けて別のものを選べる。中身と足し方は [checks/README.md](checks/README.md)。一覧はシナリオに同梱の `確認一覧.md`（SRC#Web の「文書」で読める）。
+
+## 画面なしで通す
+
+`scripts/check-sandbox.sh` が、7474/SRC の `srcsharp play` で本編と動作確認の 1 つずつを通す。CI（`.github/workflows/sandbox.yml`）も、`sandbox/` を変えたときと毎週、7474/SRC の master で動かす。
 
 ```sh
-# app に SRC# の最小の汎用データ（SRC.Sharp/Content/basic-data）と sandbox-pack.zip の中身を、sc に sandbox-scenario.zip の中身を置いて
-srcsharp play sc/サンドボックス/サンドボックス.eve --script sandbox.play --app-path app --skip-wait
+# 7474/SRC の checkout で: dotnet build SRC.Sharp/SRCSharpTools/SRCSharpTools.csproj -c Release -o out/srcsharp
+SRCSHARP="dotnet <7474/SRC>/out/srcsharp/srcsharp.dll" BASIC_DATA=<7474/SRC>/SRC.Sharp/Content/basic-data scripts/check-sandbox.sh
 ```
 
-`sandbox.play` の中身:
-
-```
-# インターミッション：「サンドボックスについて」を開いてから「次のステージへ」
-chooseseq コマンド サンドボックスについて|次のステージへ
-auto 60
-turns 10
-expect message 動作確認は以上です
-expect finished
-expect error none
-```
+- 本編: 戦闘 → インターミッション（「サンドボックスについて」）→「次のステージへ」→ 最後のメッセージ
+- 動作確認: 本編の戦闘 → インターミッションの「動作確認」で選ぶ →「次のステージへ」→ 確認（`sandbox/checks/<名前>.play` の手順）→ インターミッション →「次のステージへ」→ 最後のメッセージ
+- 終わるときに出る `HeadlessTerminatedException` のログは、画面なしの実行で終わるときのもの（7474/SRC の E2E の `intermission-commands` でも出る）
 
 ## サイトに入れる（本番）
 

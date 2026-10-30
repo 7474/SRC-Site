@@ -1,0 +1,8 @@
+# 動作確認のパイロット（生成AIで作ったテスト用のデータ）。sandbox/checks/README.md
+
+確認係
+確認係, かくにんがかり, 女性, 汎用, AAAA, 120
+特殊能力なし
+150, 150, 150, 150, 150, 150, 普通
+ＳＰ, 30, 根性, 1
+Sandbox_Midori.bmp, sandbox_support.mid

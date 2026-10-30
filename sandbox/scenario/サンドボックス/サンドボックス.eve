@@ -5,6 +5,8 @@
 プロローグ:
 # インターミッションの BGM
 RenameBGM Intermission sandbox_support.mid
+# 動作確認（sandbox/checks/）のデータ
+Load 確認
 Exit
 
 スタート:
@@ -42,7 +44,8 @@ End
 Talk システム
 このあとインターミッションに進みます。
 セーブ・ユニットやパイロットの確認・「サンドボックスについて」を試せます。
-「次のステージへ」を選ぶと終わります。
+「動作確認」から、機能追加・不具合修正を確かめるステージを選べます（選ばずに「次のステージへ」を選ぶと終わります）。
 End
 IntermissionCommand サンドボックスについて Lib\about.eve
+IntermissionCommand 動作確認 Lib\動作確認.eve
 Continue ステージ\おわり.eve
