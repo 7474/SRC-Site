@@ -59,7 +59,12 @@ describe('サンドボックス', () => {
       const title = /^# 題: (.+)$/m.exec(readFileSync(join('sandbox/checks', f), 'utf8'))![1];
       expect(list, f).toContain(title);
       expect(existsSync(join('sandbox/checks', f.replace(/\.eve$/, '.play'))), `${f} の .play`).toBe(true);
+      // Call 後片付け の行き先は確認のファイルの中にある（シナリオを上げるときの確認はファイルごとにラベルを探す）
+      const stage = await text('sandbox-scenario.zip', `サンドボックス/ステージ/確認/${f}`);
+      expect(stage.match(/^後片付け:$/gm), f).toHaveLength(1);
     }
+    // Require したときにラベルが重ならない
+    expect(menu).not.toMatch(/^後片付け:$/m);
     expect(names).toContain('サンドボックス/Data/確認/robot.txt');
     expect(readFileSync('sandbox/scenario/サンドボックス/サンドボックス.eve', 'utf8')).toMatch(/^IntermissionCommand 動作確認 Lib\\動作確認\.eve$/m);
   });

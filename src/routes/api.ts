@@ -87,8 +87,14 @@ api.post('/scenarios/:slug/versions', async c => {
   const key = `scenarios/${s.slug}/${number}.zip`;
   const row = await c.env.DB.prepare(
     // 中身のハッシュは計算しない。完了したときの R2 の ETag を記録する（complete）
-    `INSERT INTO versions (scenario_id, number, state, r2_key, size, etag, note, created_at)
-     VALUES (?, ?, 'uploading', ?, ?, '', ?, ?) RETURNING id`,
+    // 一緒に使う共有パック（requires・excludes）は前の版から引き継ぐ（公開した版があればその最新、なければ最新の版）
+    `INSERT INTO versions (scenario_id, number, state, r2_key, size, etag, note, created_at, requires, excludes)
+     SELECT ?1, ?2, 'uploading', ?3, ?4, '', ?5, ?6, COALESCE(p.requires, '[]'), COALESCE(p.excludes, '[]')
+       FROM (SELECT 1) LEFT JOIN (
+         SELECT requires, excludes FROM versions WHERE scenario_id = ?1
+          ORDER BY CASE WHEN state = 'published' THEN 0 ELSE 1 END, number DESC LIMIT 1
+       ) p
+     RETURNING id`,
   ).bind(s.id, number, key, size, String(body.note ?? '').slice(0, 200) || null, now()).first<{ id: number }>();
   const versionId = row!.id;
   const uploadId = await startUpload(c.env, key);

@@ -365,6 +365,7 @@ export function EditPage(props: {
       {latestPublished && (
         <section>
           <h2>一緒に使う共有パック（最新の版）</h2>
+          <p class="muted">新しい版を上げると、この設定を引き継ぎます。</p>
           <form method="post" action={`/my/versions/${latestPublished.id}/packs`} class="form">
             {props.packs.map(p => (
               <label class="check">
