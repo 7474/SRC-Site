@@ -245,6 +245,8 @@ def read_checks():
         body = path.read_text(encoding="utf-8").splitlines()
         if "確認:" not in body or "Call 後片付け" not in body:
             raise CheckError(f"{path.name}: 「確認:」のラベルから始め、最後に Call 後片付け でインターミッションに戻す")
+        if any(line.strip() in ("後片付け:", "残りの片付け:") for line in body):
+            raise CheckError(f"{path.name}: 後片付け: のラベルは書かない（scripts/make-sandbox.py が足す）")
         if any(line.startswith("Continue") for line in body):
             raise CheckError(f"{path.name}: Continue は使わない（Call 後片付け で、作ったパイロットを消してから戻る）")
         checks.append({"file": path.name, **meta})
@@ -267,6 +269,24 @@ def check_pilots():
     return names
 
 
+def cleanup(label):
+    """確認が作ったパイロット（と乗っているユニット）を消し、Continue（引数なし）でインターミッションに戻るラベル"""
+    lines = [f"{label}:"]
+    for p in check_pilots():
+        lines += [f"If Level({p}) > 0 Then", f"  RemovePilot {p} 非同期", "EndIf"]
+    return lines + ["Continue"]
+
+
+def check_file(c):
+    """
+    確認のファイル。最後に「後片付け:」のラベルを足す。
+    ラベルを確認のファイルの中に置くので、シナリオを上げるときの確認（ファイルごとにラベルを探す）でも見つかる
+    """
+    body = (CHECKS / c["file"]).read_text(encoding="utf-8").rstrip("\n")
+    lines = [body, "", "# 確認の後片付け（scripts/make-sandbox.py が足す）", *cleanup("後片付け"), ""]
+    return "\n".join(lines).encode("utf-8")
+
+
 def check_menu(checks):
     """
     インターミッションのコマンド「動作確認」。選んだ確認のファイルを Require し、このサブステージのまま「確認:」から始める。
@@ -285,7 +305,7 @@ def check_menu(checks):
         "  Talk システム",
         "  前の動作確認で作ったユニットが残っていたので片付けました。もう一度「動作確認」を選んでください。",
         "  End",
-        "  Call 後片付け",
+        "  Call 残りの片付け",
         "EndIf",
         "Ask 確かめるものを選んでください（新しい順）",
     ]
@@ -302,10 +322,8 @@ def check_menu(checks):
             f"  Require ステージ\\確認\\{c['file']}",
         ]
     lines += ["Case Else", "  Continue", "EndSw", "Exit", "", "スタート:", "Call 確認", "Exit", ""]
-    lines += ["# 確認の後片付け：確認が作ったパイロット（と乗っているユニット）を消し、インターミッションに戻る", "後片付け:"]
-    for p in pilots:
-        lines += [f"If Level({p}) > 0 Then", f"  RemovePilot {p} 非同期", "EndIf"]
-    lines += ["Continue", ""]
+    # 確認の「後片付け:」は確認のファイルに足す（check_file）。Require したときに同じ名前のラベルが 2 つにならないよう、ここは別の名前にする
+    lines += ["# 前の確認の残りの片付け", *cleanup("残りの片付け"), ""]
     return "\n".join(lines)
 
 
@@ -343,7 +361,7 @@ def build_scenario(out):
             add(z, path.relative_to(src).as_posix(), path.read_bytes())
         add(z, "サンドボックス/sandbox.map", sandbox_map().encode("utf-8"))
         for c in checks:
-            add(z, f"サンドボックス/ステージ/確認/{c['file']}", (CHECKS / c["file"]).read_bytes())
+            add(z, f"サンドボックス/ステージ/確認/{c['file']}", check_file(c))
         for path in sorted((CHECKS / "lib").glob("*.eve")):
             add(z, f"サンドボックス/Lib/確認/{path.name}", path.read_bytes())
         for path in sorted((CHECKS / "data").glob("*.txt")):
