@@ -3,7 +3,7 @@
 #   dist/static/  ポータルの CSS・JS（public/）
 #   dist/play/    SRC#Web の発行物（$SRCWEB_DIR。無ければ仮の頁）
 #   dist/lint/    ブラウザで動く lint の発行物（$SRCLINT_DIR。7474/SRC の SRCLintWeb。無ければ置かず、投稿の画面は lint を飛ばす）
-#   dist/viewer/  データビューアの発行物（$SRCVIEWER_DIR。7474/SRC の SRCTestBlazor。無ければ置かない）と、このサイトの zip を読む設定（viewer.json）
+#   dist/viewer/  データビューアの発行物（$SRCVIEWER_DIR。7474/SRC の SRCDataViewer。無ければ置かない）と、このサイトの zip を読む設定（viewer.json）
 # 使い方: SRCWEB_DIR=out/web/wwwroot SRCLINT_DIR=out/lint/wwwroot SRC_VERSION="master abc1234" scripts/assemble.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
