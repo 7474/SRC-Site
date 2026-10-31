@@ -34,3 +34,17 @@ npm run typecheck && npm test
 ```
 
 詳しくは [operations.md の「ローカル開発」](operations.md#ローカル開発)。
+
+## テスト
+
+`npm test` で次の 2 つ（`vitest.config.ts` の projects）を流します。CI（`.github/workflows/ci.yml`）でも流します。
+
+| プロジェクト | 置き場 | 内容 |
+|---|---|---|
+| node | `test/*.test.ts` | ライブラリ（zip・カタログ・検査など）を Node で確かめる |
+| workers | `test/workers/*.test.ts` | Worker を Workers の実行環境（[@cloudflare/vitest-plugin](https://developers.cloudflare.com/workers/testing/vitest-integration/)。Miniflare）で動かし、D1・R2 を使って経路を確かめる（ログイン・権限・投稿・承認・投稿の量の上限・版の共有パック） |
+
+- workers は `wrangler.jsonc` の既定（`--env` なし）の設定で動きます。D1 には `migrations/` を当ててから流します（`test/workers/setup.ts`）。回数の制限は緩めています
+- ログインは Google を通さず、アプリと同じように `sessions` に行を入れて `sid` の Cookie を渡します（`test/workers/helpers.ts`）
+- Turnstile・R2 の S3 互換 API の鍵は設定しないので、確認は通り、zip は Worker を通して上げる形になります
+- workers のテストの型は `test/workers/tsconfig.json` で検査します（`npm run typecheck`）

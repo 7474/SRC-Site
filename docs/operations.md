@@ -54,7 +54,7 @@
 
 | ワークフロー | いつ | すること |
 |---|---|---|
-| `ci.yml` | push・PR | 型検査・単体テスト・パックの定義の確認 |
+| `ci.yml` | push・PR | 型検査・テスト（ライブラリと Worker の経路。docs/development.md の「テスト」）・パックの定義の確認 |
 | `deploy.yml` | `main` への push → 本番。PR → バージョン URL `pr-<番号>`。手動 → 本番かバージョン URL `staging` | SRC#Web を AOT で発行（7474/SRC のコミットごとにキャッシュ）、`dist/` を組み立て、25 MiB を超えるものを R2 の `web/` へ。本番は D1 のマイグレーションと `wrangler deploy`、バージョン URL は `wrangler versions upload --preview-alias` |
 | `packs.yml` | `packs/` の変更、手動 | パックを作り R2 の `packs/<id>/<版>.zip` に置き、D1 の `packs` を更新する（中身が同じなら何もしない） |
 

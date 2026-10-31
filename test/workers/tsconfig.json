@@ -1,0 +1,8 @@
+{
+  // workers のテストの型検査（npm run typecheck）。cloudflare:test・cloudflare:workers の型は @cloudflare/vitest-plugin/types
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "types": ["@cloudflare/workers-types", "@cloudflare/vitest-plugin/types"]
+  },
+  "include": ["./**/*.ts", "../../src"]
+}
