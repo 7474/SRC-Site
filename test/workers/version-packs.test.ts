@@ -1,7 +1,7 @@
 // 新しい版の「一緒に使う共有パック」（issue #31 の 5）。
 // 前の版（公開した版があればその最新、なければ最新の版）から引き継ぎ、上げる画面でパックを選んだときはそれを使う（src/routes/api.ts）
 import { describe, expect, it } from 'vitest';
-import { call, createPack, createScenario, createVersion, db, login, type TestUser } from './helpers';
+import { call, createPack, createScenario, createVersion, db, login, status, type TestUser } from './helpers';
 
 async function upload(user: TestUser, slug: string, packs?: string[]) {
   const r = await call('POST', `/api/scenarios/${slug}/versions`, user, { json: packs ? { size: 100, packs } : { size: 100 } });
@@ -88,5 +88,50 @@ describe('上げる画面で選んだパック', () => {
     const withdrawn = await createPack({ owner: user, withdrawn: true });
     const s = await createScenario(user);
     expect((await upload(user, s.slug, [ok, unbuilt, withdrawn, 'no-such-pack'])).requires).toEqual([ok]);
+  });
+});
+
+// 編集の頁で、上げた版の共有パックを選び直す（/my/versions/:id/packs）。選べるパックは上げる画面と同じ
+describe('編集の頁で選び直すパック', () => {
+  const settings = async (v: number) => {
+    const row = await db().prepare('SELECT requires, excludes FROM versions WHERE id = ?').bind(v).first<{ requires: string; excludes: string }>();
+    return { requires: JSON.parse(row!.requires) as string[], excludes: JSON.parse(row!.excludes) as string[] };
+  };
+
+  it('zip の無いパック・取り下げたパック・無いパックは選べない', async () => {
+    const user = await login();
+    const ok = await createPack({ owner: user });
+    const unbuilt = await createPack({ owner: user, built: false });
+    const withdrawn = await createPack({ owner: user, withdrawn: true });
+    const s = await createScenario(user);
+    const v = await createVersion(s);
+    expect(await status(call('POST', `/my/versions/${v}/packs`, user, { form: { pack: [ok, unbuilt, withdrawn, 'no-such-pack'] } }))).toBe(302);
+    expect((await settings(v)).requires).toEqual([ok]);
+  });
+
+  it('取り下げた既定のパックは、外すものにも入れない', async () => {
+    const user = await login();
+    const [usable, withdrawn] = [await createPack({ kind: 'site', isDefault: true }), await createPack({ kind: 'site', isDefault: true, withdrawn: true })];
+    const s = await createScenario(user);
+    const v = await createVersion(s);
+    expect(await status(call('POST', `/my/versions/${v}/packs`, user, { form: { pack: [] } }))).toBe(302);
+    const { excludes } = await settings(v);
+    expect(excludes).toContain(usable);
+    expect(excludes).not.toContain(withdrawn);
+  });
+
+  it('編集の頁にも、zip の無いパック・取り下げたパックは出さない', async () => {
+    const user = await login();
+    const ok = await createPack({ owner: user });
+    const unbuilt = await createPack({ owner: user, built: false });
+    const withdrawn = await createPack({ owner: user, withdrawn: true });
+    const s = await createScenario(user);
+    await createVersion(s);
+    const r = await call('GET', `/my/scenarios/${s.slug}`, user);
+    expect(r.status).toBe(200);
+    const html = await r.text();
+    expect(html).toContain(`value="${ok}"`);
+    expect(html).not.toContain(`value="${unbuilt}"`);
+    expect(html).not.toContain(`value="${withdrawn}"`);
   });
 });

@@ -1,7 +1,7 @@
 // JSON の API（カタログ・投稿）
 import { Hono } from 'hono';
 import type { AppEnv, User } from '../env';
-import { catalog, packSettings, PLAYABLE_SELECT, type PackRow, type PlayableRow } from '../lib/catalog';
+import { catalog, choosePacks, PLAYABLE_SELECT, type PackRow, type PlayableRow } from '../lib/catalog';
 import { verifyTurnstile } from '../lib/turnstile';
 import { canPresign } from '../lib/presign';
 import { finishUpload, PART_SIZE, partCount, partTarget, putPart, startUpload, validPart } from '../lib/multipart';
@@ -99,8 +99,7 @@ api.post('/scenarios/:slug/versions', async c => {
   const versionId = row!.id;
   // 上げる画面で選んだパック（送られたとき）。選べるのは zip のあるパック（編集の頁に出すもの）だけ
   if (Array.isArray(body.packs)) {
-    const packs = (await c.env.DB.prepare("SELECT id, is_default FROM packs WHERE withdrawn = 0 AND r2_key != ''").all<{ id: string; is_default: number }>()).results;
-    const { requires, excludes } = packSettings(packs, body.packs.map(String));
+    const { requires, excludes } = await choosePacks(c.env.DB, body.packs.map(String));
     await c.env.DB.prepare('UPDATE versions SET requires = ?, excludes = ? WHERE id = ?').bind(JSON.stringify(requires), JSON.stringify(excludes), versionId).run();
   }
   const uploadId = await startUpload(c.env, key);

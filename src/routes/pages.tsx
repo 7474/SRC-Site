@@ -8,6 +8,7 @@ import { CheckPage, type CheckPack } from '../views/check';
 import { canEdit, canView, getScenario, LIST_SELECT, requireUser } from './common';
 import { verifyTurnstile } from '../lib/turnstile';
 import { canPresign } from '../lib/presign';
+import { choosePacks, USABLE_PACK_SQL } from '../lib/catalog';
 import { HANDLE_PATTERN, now, parseJsonArray, reportUrl, SLUG_PATTERN } from '../lib/util';
 import type { Child } from 'hono/jsx';
 
@@ -109,7 +110,7 @@ pages.get('/users/:handle', async c => {
 
 // データ・シナリオのチェッカー（ログインは要らない）。汎用データは公開しているパックから選ぶ
 pages.get('/check', async c => {
-  const packs = (await c.env.DB.prepare("SELECT id, title, is_default, version FROM packs WHERE withdrawn = 0 AND r2_key != '' ORDER BY priority, id").all<CheckPack>()).results;
+  const packs = (await c.env.DB.prepare(`SELECT id, title, is_default, version FROM packs WHERE ${USABLE_PACK_SQL} ORDER BY priority, id`).all<CheckPack>()).results;
   return render(c, 'データ・シナリオのチェック', <CheckPage packs={packs} />);
 });
 
@@ -185,7 +186,7 @@ async function editPage(c: Context<AppEnv>, slug: string, extra: { error?: strin
   const versions = (await c.env.DB.prepare('SELECT id, number, state, size, created_at, published_at, note, inspect_note, root, eve, requires, excludes FROM versions WHERE scenario_id = ? ORDER BY number DESC')
     .bind(s.id).all<any>()).results;
   // まだ zip の無いパック（利用者が作り、一度も反映していないもの）は選べない
-  const packs = (await c.env.DB.prepare("SELECT id, title, is_default, priority, withdrawn, version, r2_key FROM packs WHERE withdrawn = 0 AND r2_key != '' ORDER BY priority, id").all<any>()).results;
+  const packs = (await c.env.DB.prepare(`SELECT id, title, is_default, priority, withdrawn, version, r2_key FROM packs WHERE ${USABLE_PACK_SQL} ORDER BY priority, id`).all<any>()).results;
   const form = extra.form ?? {
     slug: s.slug, title: s.title, author: s.author ?? '', description: s.description ?? '', license: s.license ?? '',
     tags: parseJsonArray(s.tags).join(' '), visibility: s.visibility,
@@ -263,9 +264,8 @@ pages.post('/my/versions/:id/packs', requireUser, async c => {
   }
   const form = await c.req.parseBody({ all: true });
   const chosen = new Set((Array.isArray(form.pack) ? form.pack : form.pack ? [form.pack] : []).map(String));
-  const packs = (await c.env.DB.prepare('SELECT id, is_default FROM packs').all<{ id: string; is_default: number }>()).results;
-  const { packSettings } = await import('../lib/catalog');
-  const { requires, excludes } = packSettings(packs, chosen);
+  // 選べるのは編集の頁に出すパック（zip があり、取り下げていないもの）だけ。上げる画面（/api/scenarios/:slug/versions）と同じ
+  const { requires, excludes } = await choosePacks(c.env.DB, chosen);
   await c.env.DB.prepare('UPDATE versions SET requires = ?, excludes = ? WHERE id = ?').bind(JSON.stringify(requires), JSON.stringify(excludes), found.v.id).run();
   return c.redirect(`/my/scenarios/${found.s.slug}?saved=1`);
 });
