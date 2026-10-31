@@ -1,4 +1,4 @@
-// データビューア（/viewer/。7474/SRC の SRCTestBlazor）が読む、公開している zip の一覧と中身の目次（docs/resources.md）
+// データビューア（/viewer/。7474/SRC の SRCDataViewer）が読む、公開している zip の一覧と中身の目次（docs/resources.md）
 import { Hono } from 'hono';
 import type { AppEnv } from '../env';
 import { PLAYABLE_SELECT, resolveRequires, usablePack, type PackRow, type PlayableRow } from '../lib/catalog';

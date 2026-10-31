@@ -94,7 +94,7 @@ src-site/
 | `/play/` | SRC#Web（クロスオリジン分離） | 不要 | 静的アセット |
 | `/lint/` | ブラウザで動く lint（7474/SRC の SRCLintWeb） | 不要 | 静的アセット |
 | `/check` | データ・シナリオのチェッカー。選ぶかドロップした zip・フォルダ・ファイルを、投稿と同じ検査（zip の目次の規則・srcsharp lint・静的解析・素材の参照）にかける。中身（シナリオか、データだけか）に合わせて確かめる。ファイルはブラウザの外に出さない（`public/check.js`）。手元の SRC 本体・データパックを依存データとして足せる（System の .txt・Lib の .eve の中身と、ほかのファイルの名前だけをブラウザの IndexedDB `srcsite-check` に覚え、汎用データに重ねる）。SRC#Web（`/play/`）に追加した素材（IndexedDB `srcweb` の `archives` の `asset`）も、データベースがあるときだけ読み取り専用で開いて依存データにできる。汎用データが足りないと出る問題（スペシャルパワー・ラベル・include）は名前をまとめて案内する。確かめ方（パック・素材）は `localStorage` に覚える | 不要 | ― |
-| `/viewer/` | データビューア（7474/SRC の SRCTestBlazor。srcv.7474.jp と同じもの）。データは 7474/SRC-Data（GitHub）と、このサイトの公開している zip（`viewer.json` で `/api/viewer/index.json` を読む。[素材の投稿と閲覧](resources.md)）からブラウザが読む。頁の中の道は `index.html` を返す | 不要 | 静的アセット |
+| `/viewer/` | データビューア（7474/SRC の SRCDataViewer。srcv.7474.jp と同じもの）。データは 7474/SRC-Data（GitHub）と、このサイトの公開している zip（`viewer.json` で `/api/viewer/index.json` を読む。[素材の投稿と閲覧](resources.md)）からブラウザが読む。頁の中の道は `index.html` を返す | 不要 | 静的アセット |
 | `/static/` | ポータルの CSS・JS | 不要 | 静的アセット |
 
 ### 公開の画面

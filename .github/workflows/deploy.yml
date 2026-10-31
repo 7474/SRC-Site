@@ -112,8 +112,10 @@ jobs:
           if [ -f srcsharp/SRC.Sharp/SRCLintWeb/SRCLintWeb.csproj ]; then
             dotnet publish srcsharp/SRC.Sharp/SRCLintWeb/SRCLintWeb.csproj -c Release -o out/lint
           fi
-          # データビューア（7474/SRC の SRCTestBlazor。srcv.7474.jp と同じもの）
-          dotnet publish srcsharp/SRC.Sharp/SRCTestBlazor/SRCTestBlazor.csproj -c Release -o out/viewer
+          # データビューア（7474/SRC の SRCDataViewer。srcv.7474.jp と同じもの）。古い版では SRCTestBlazor という名前だった
+          viewer=srcsharp/SRC.Sharp/SRCDataViewer/SRCDataViewer.csproj
+          [ -f "$viewer" ] || viewer=srcsharp/SRC.Sharp/SRCTestBlazor/SRCTestBlazor.csproj
+          dotnet publish "$viewer" -c Release -o out/viewer
 
       - uses: actions/setup-node@v7
         with:
