@@ -1,7 +1,7 @@
 // ほかの人のシナリオ・パックは変えられない（issue #31 の 2）。運営と本人・管理者は変えられることも確かめ、断っている理由が権限であることを示す
 import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
-import { call, createPack, createScenario, createSubmission, createVersion, db, login, status } from './helpers';
+import { call, createPack, createScenario, createSubmission, createVersion, db, login, status, type TestUser } from './helpers';
 
 const scenarioTitle = (id: number) => db().prepare('SELECT title FROM scenarios WHERE id = ?').bind(id).first<string>('title');
 
@@ -105,6 +105,57 @@ describe('ほかの人のパック', () => {
     expect(await status(call('POST', `/api/packs/${pack}/builds`, other, { json: { revision: 0, size: 22 } }))).toBe(404);
     expect(await db().prepare('SELECT COUNT(*) AS n FROM pack_builds WHERE pack_id = ?').bind(pack).first('n')).toBe(0);
     expect(await status(call('GET', `/api/packs/${pack}/plan`, owner))).toBe(200);
+  });
+
+  // 組み直しを始めたあとに管理できなくなったら、パートを上げる・完了するのを続けさせない（止められた利用者は requireUser が断る）
+  describe('組み直しの途中で管理できなくなる', () => {
+    // パックにファイルが無いと組めないので、承認した投稿を 1 つ入れておく
+    async function withFile(pack: string) {
+      const sub = await createSubmission(pack, await login(), { state: 'approved' });
+      await db().prepare("UPDATE pack_files SET state = 'active' WHERE submission_id = ?").bind(sub).run();
+      return pack;
+    }
+    async function startBuild(user: TestUser, pack: string) {
+      const plan = await call('GET', `/api/packs/${pack}/plan`, user);
+      expect(plan.status).toBe(200);
+      const { revision, size } = await plan.json<{ revision: number; size: number }>();
+      const r = await call('POST', `/api/packs/${pack}/builds`, user, { json: { revision, size } });
+      expect(r.status).toBe(200);
+      const { id } = await r.json<{ id: number }>();
+      return { id, size };
+    }
+    async function blocked(user: TestUser, build: { id: number; size: number }) {
+      expect(await status(call('GET', `/api/pack-builds/${build.id}/parts/1`, user))).toBe(404);
+      expect(await status(call('PUT', `/api/pack-builds/${build.id}/parts/1`, user, { bytes: new Uint8Array(build.size) }))).toBe(404);
+      expect(await status(call('POST', `/api/pack-builds/${build.id}/complete`, user, { json: { parts: [] } }))).toBe(404);
+      expect(await db().prepare('SELECT state FROM pack_builds WHERE id = ?').bind(build.id).first('state')).toBe('uploading');
+    }
+
+    it('管理者から外れた', async () => {
+      const owner = await login();
+      const pack = await withFile(await createPack({ owner }));
+      const build = await startBuild(owner, pack);
+      await db().prepare('DELETE FROM pack_managers WHERE pack_id = ? AND user_id = ?').bind(pack, owner.id).run();
+      await blocked(owner, build);
+    });
+
+    it('サイトのパックになった', async () => {
+      const owner = await login();
+      const pack = await withFile(await createPack({ owner }));
+      const build = await startBuild(owner, pack);
+      await db().prepare("UPDATE packs SET kind = 'site' WHERE id = ?").bind(pack).run();
+      await blocked(owner, build);
+    });
+
+    it('管理し続けている人・運営は続けられる', async () => {
+      const [owner, admin] = [await login(), await login({ role: 'admin' })];
+      const pack = await withFile(await createPack({ owner }));
+      for (const user of [owner, admin]) {
+        const build = await startBuild(user, pack);
+        expect(await status(call('GET', `/api/pack-builds/${build.id}/parts/1`, user))).toBe(200);
+        expect(await status(call('PUT', `/api/pack-builds/${build.id}/parts/1`, user, { bytes: new Uint8Array(build.size) }))).toBe(200);
+      }
+    });
   });
 
   it('サイトのパック（運営が用意したもの）は利用者が管理できない', async () => {

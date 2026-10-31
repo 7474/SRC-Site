@@ -13,6 +13,9 @@ export function usablePack(p: PackRow): boolean {
   return !p.withdrawn && p.r2_key !== '';
 }
 
+/** 配れるパック（usablePack）を D1 から選ぶ条件 */
+export const USABLE_PACK_SQL = "withdrawn = 0 AND r2_key != ''";
+
 export type PlayableRow = {
   slug: string; title: string; author: string | null; license: string | null; description: string | null;
   version_id: number; number: number; etag: string; root: string | null; eve: string | null; requires: string; excludes: string;
@@ -47,6 +50,12 @@ export function packSettings(packs: { id: string; is_default: number }[], chosen
     requires: packs.filter(p => !p.is_default && set.has(p.id)).map(p => p.id),
     excludes: packs.filter(p => p.is_default && !set.has(p.id)).map(p => p.id),
   };
+}
+
+/** 版で使う共有パックを選んだものから作る。選べるのは配れるパック（編集の頁・上げる画面に出すもの）だけで、ほかは無視する */
+export async function choosePacks(db: D1Database, chosen: Iterable<string>): Promise<{ requires: string[]; excludes: string[] }> {
+  const packs = (await db.prepare(`SELECT id, is_default FROM packs WHERE ${USABLE_PACK_SQL}`).all<{ id: string; is_default: number }>()).results;
+  return packSettings(packs, chosen);
 }
 
 export function scenarioEntry(row: PlayableRow, packs: PackRow[]): CatalogEntry {

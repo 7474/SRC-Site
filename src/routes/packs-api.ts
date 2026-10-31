@@ -132,8 +132,9 @@ packApi.get('/pack-submissions/:id', async c => {
 
 // ── zip への反映（承認者のブラウザが組む） ──
 
-async function managedPack(c: any) {
-  const pack = await getPack(c.env.DB, c.req.param('id'));
+// いまの利用者が管理できる、利用者が作ったパック（運営はどれも）。無い・管理できなければ null
+async function managedPack(c: any, id: string = c.req.param('id')) {
+  const pack = await getPack(c.env.DB, id);
   return pack && pack.kind === 'community' && (await canManage(c.env.DB, c.get('user'), pack)) ? pack : null;
 }
 
@@ -177,9 +178,10 @@ packApi.post('/packs/:id/builds', async c => {
 
 type BuildRow = Upload & { id: number; pack_id: string; user_id: number; revision: number; state: string };
 
+// 自分が始めた組み直し。始めたあとに管理者から外れた・止められたときなどは続けさせないよう、いまも管理できるかを確かめ直す
 async function ownBuild(c: any): Promise<BuildRow | null> {
   const b = await c.env.DB.prepare('SELECT * FROM pack_builds WHERE id = ?').bind(Number(c.req.param('id'))).first();
-  return b && b.user_id === c.get('user').id ? b : null;
+  return b && b.user_id === c.get('user').id && (await managedPack(c, b.pack_id)) ? b : null;
 }
 
 // 上がった zip の目次を、パックに入れるファイルと照らし合わせてから、パックの版にする
