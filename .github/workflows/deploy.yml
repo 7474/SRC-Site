@@ -1,6 +1,8 @@
 name: Deploy
 
-# SRC#Web（7474/SRC の SRC.Sharp/SRCSharpWeb）を発行し、ポータルの Worker と合わせて Cloudflare に配信する（docs/operations.md の「配信」）
+# SRC#Web（7474/SRC の SRC.Sharp/SRCSharpWeb）を、ポータルの Worker と合わせて Cloudflare に配信する（docs/operations.md の「配信」）
+#   SRC#Web・lint・データビューアは、既定（SRC_REF=dev）では 7474/SRC の開発版のリリース（dev。master にマージされるたびに入れ替わる）の zip を使う。
+#   SRC_REF にブランチ・タグを渡したときは、その 7474/SRC をここで発行する
 #   main への push → 本番（src.koudenpa.net）
 #   PR → 本番の Worker のバージョン URL（pr-<番号>-src-site.koudenpa.workers.dev）。本番には出さない
 #   手動実行 → 本番か、バージョン URL（staging-src-site.koudenpa.workers.dev）
@@ -22,12 +24,12 @@ on:
           - production
         default: preview
       src_ref:
-        description: '発行する 7474/SRC のブランチ・タグ'
+        description: '使う 7474/SRC（dev は開発版のリリース。ブランチ・タグならここで発行する）'
         type: string
         default: ''
 
 env:
-  SRC_REF: ${{ inputs.src_ref || vars.SRC_REF || 'master' }}
+  SRC_REF: ${{ inputs.src_ref || vars.SRC_REF || 'dev' }}
   # production か、バージョン URL の別名
   TARGET: ${{ (github.event_name == 'push' && 'production') || (github.event_name == 'pull_request' && format('pr-{0}', github.event.number)) || (inputs.target == 'production' && 'production') || 'staging' }}
 
@@ -62,7 +64,32 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # 7474/SRC の開発版（https://github.com/7474/SRC/releases/tag/dev）の zip を取る。
+      # manifest.json の SHA-256 と合わなければ（7474/SRC が入れ替えている最中）、少し待って取り直す
+      - name: Download SRC#Web (dev)
+        id: dev
+        if: env.SRC_REF == 'dev'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for attempt in 1 2 3; do
+            rm -rf dev && mkdir dev
+            gh release download dev -R 7474/SRC -D dev -p manifest.json -p SRCSharpWeb.zip -p SRCLintWeb.zip -p SRCDataViewer.zip
+            if (cd dev && jq -r '.files[] | select(.name | IN("SRCSharpWeb.zip","SRCLintWeb.zip","SRCDataViewer.zip")) | "\(.sha256)  \(.name)"' manifest.json | sha256sum -c -); then
+              break
+            fi
+            [ "$attempt" = 3 ] && { echo "::error::開発版の zip が manifest.json と合わない"; exit 1; }
+            sleep 60
+          done
+          for p in web:SRCSharpWeb lint:SRCLintWeb viewer:SRCDataViewer; do
+            mkdir -p "out/${p%%:*}/wwwroot" && unzip -q "dev/${p#*:}.zip" -d "out/${p%%:*}/wwwroot"
+          done
+          commit=$(jq -r .commit dev/manifest.json)
+          echo "version=dev $(jq -r .app dev/manifest.json) ${commit:0:7}" >> "$GITHUB_OUTPUT"
+          echo "::notice::7474/SRC の開発版 $(jq -r .app dev/manifest.json)（${commit}）を使う"
+
       - name: Checkout SRC
+        if: env.SRC_REF != 'dev'
         uses: actions/checkout@v7
         with:
           repository: 7474/SRC
@@ -71,12 +98,16 @@ jobs:
 
       - name: Resolve SRC commit
         id: src
-        run: echo "sha=$(git -C srcsharp rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        if: env.SRC_REF != 'dev'
+        run: |
+          echo "sha=$(git -C srcsharp rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "version=${SRC_REF} $(git -C srcsharp rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
 
       # 発行物は 7474/SRC のコミットごとにキャッシュする（src-host と同じ）
       # https://github.com/actions/cache
       - name: Cache published SRC#Web
         id: published
+        if: env.SRC_REF != 'dev'
         uses: actions/cache@v6
         with:
           path: |
@@ -86,12 +117,12 @@ jobs:
           key: srcweb-aot-lint-viewer-${{ steps.src.outputs.sha }}
 
       - uses: actions/setup-dotnet@v6
-        if: steps.published.outputs.cache-hit != 'true'
+        if: env.SRC_REF != 'dev' && steps.published.outputs.cache-hit != 'true'
         with:
           dotnet-version: '10.0.x'
 
       - name: Cache NuGet packages and build intermediates
-        if: steps.published.outputs.cache-hit != 'true'
+        if: env.SRC_REF != 'dev' && steps.published.outputs.cache-hit != 'true'
         uses: actions/cache@v6
         with:
           path: |
@@ -102,7 +133,7 @@ jobs:
             srcweb-build-
 
       - name: Publish SRC#Web
-        if: steps.published.outputs.cache-hit != 'true'
+        if: env.SRC_REF != 'dev' && steps.published.outputs.cache-hit != 'true'
         run: |
           # マニフェストは SDK に同梱のものを使う（更新すると、NuGet にまだ無いマニフェストを参照するワークロードのセットで失敗することがある）
           # https://learn.microsoft.com/dotnet/core/tools/dotnet-workload-install
@@ -131,7 +162,7 @@ jobs:
         run: |
           if [ -d out/lint/wwwroot ]; then export SRCLINT_DIR=out/lint/wwwroot; fi
           if [ -d out/viewer/wwwroot ]; then export SRCVIEWER_DIR=out/viewer/wwwroot; fi
-          SRCWEB_DIR=out/web/wwwroot SRC_VERSION="${SRC_REF} $(git -C srcsharp rev-parse --short HEAD)" bash scripts/assemble.sh
+          SRCWEB_DIR=out/web/wwwroot SRC_VERSION="${{ steps.dev.outputs.version || steps.src.outputs.version }}" bash scripts/assemble.sh
 
       - name: Deploy to Cloudflare
         env:

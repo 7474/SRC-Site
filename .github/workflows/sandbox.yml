@@ -1,7 +1,8 @@
 name: Sandbox
 
 # サンドボックス（sandbox/README.md）を、7474/SRC の srcsharp play で画面なしに通す（本編と、動作確認の 1 つずつ）。
-# 動作確認は 7474/SRC の新しい修正を確かめるので、既定は 7474/SRC の master で動かす。毎週も動かし、SRC# の変更で崩れていないかを見る
+# 動作確認は 7474/SRC の新しい修正を確かめるので、既定は 7474/SRC の開発版（dev。master にマージされるたびに入れ替わる）の srcsharp で動かす。
+# 毎週も動かし、SRC# の変更で崩れていないかを見る。src_ref にブランチ・タグを渡したときは、その 7474/SRC から srcsharp を作る
 on:
   pull_request:
     paths:
@@ -21,8 +22,8 @@ on:
   workflow_dispatch:
     inputs:
       src_ref:
-        description: 'srcsharp を作る 7474/SRC のブランチ・タグ'
-        default: 'master'
+        description: '使う 7474/SRC（dev は開発版のリリースの srcsharp。ブランチ・タグならそこから作る）'
+        default: 'dev'
 
 jobs:
   play:
@@ -30,22 +31,40 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Checkout SRC
-        uses: actions/checkout@v7
-        with:
-          repository: 7474/SRC
-          ref: ${{ inputs.src_ref || 'master' }}
-          path: srcsharp
-
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
 
+      # 開発版の srcsharp（.NET tool の nupkg）を入れ、同じコミットの basic-data を使う
+      - name: Install srcsharp (dev)
+        id: dev
+        if: (inputs.src_ref || 'dev') == 'dev'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download dev -R 7474/SRC -D dev -p manifest.json -p 'SRCSharpTools.*.nupkg'
+          (cd dev && jq -r '.files[] | select(.name | startswith("SRCSharpTools.")) | "\(.sha256)  \(.name)"' manifest.json | sha256sum -c -)
+          dotnet tool install SRCSharpTools --add-source dev --prerelease --tool-path out/tool
+          out/tool/srcsharp --version
+          echo "commit=$(jq -r .commit dev/manifest.json)" >> "$GITHUB_OUTPUT"
+          echo "srcsharp=${{ github.workspace }}/out/tool/srcsharp" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout SRC
+        uses: actions/checkout@v7
+        with:
+          repository: 7474/SRC
+          ref: ${{ steps.dev.outputs.commit || inputs.src_ref }}
+          path: srcsharp
+
       - name: Build srcsharp
-        run: dotnet build srcsharp/SRC.Sharp/SRCSharpTools/SRCSharpTools.csproj -c Release -o out/srcsharp
+        id: build
+        if: steps.dev.outcome == 'skipped'
+        run: |
+          dotnet build srcsharp/SRC.Sharp/SRCSharpTools/SRCSharpTools.csproj -c Release -o out/srcsharp
+          echo "srcsharp=dotnet ${{ github.workspace }}/out/srcsharp/srcsharp.dll" >> "$GITHUB_OUTPUT"
 
       - name: Play the sandbox
         env:
-          SRCSHARP: dotnet ${{ github.workspace }}/out/srcsharp/srcsharp.dll
+          SRCSHARP: ${{ steps.dev.outputs.srcsharp || steps.build.outputs.srcsharp }}
           BASIC_DATA: ${{ github.workspace }}/srcsharp/SRC.Sharp/Content/basic-data
         run: bash scripts/check-sandbox.sh
