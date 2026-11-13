@@ -12,8 +12,10 @@
     analyze: { label: 'ラベルと include を確かめています', weight: 10 },
     assets: { label: '素材のファイルを確かめています', weight: 5 },
   };
-  const KINDS = { error: 'エラー', warning: '警告', info: '素材' };
-  const ORDER = { error: 0, warning: 1, info: 2 };
+  // info は 2 つに分ける。規則（ruleId がある。SRC の仕様と食い違うデータなど）と、素材の参照（見つからない画像・音）
+  const KINDS = { error: 'エラー', warning: '警告', rule: '規則', info: '素材' };
+  const ORDER = { error: 0, warning: 1, rule: 2, info: 3 };
+  const kindOf = d => (d.severity === 'info' && d.ruleId ? 'rule' : d.severity);
 
   /**
    * lint をかける。進み具合（段階・扱っているファイル・経過時間）を show と progress に出し、cancel のボタンで止められる。
@@ -61,6 +63,8 @@
       const result = await m.lintZip(file, {
         systemArchives,
         assets,
+        // 規則は SRC の仕様と食い違うデータ（src のグループ）だけ。どれも「情報」で、投稿は止めない
+        rules: ['src'],
         signal: controller.signal,
         onProgress: p => {
           last = p;
@@ -83,9 +87,9 @@
     }
   }
 
-  /** 結果の表を box に出す（エラー・警告・素材の順。200 件まで） */
+  /** 結果の表を box に出す（エラー・警告・規則・素材の順。200 件まで） */
   function renderTable(box, found) {
-    const problems = [...found].sort((a, b) => ORDER[a.severity] - ORDER[b.severity]);
+    const problems = [...found].sort((a, b) => ORDER[kindOf(a)] - ORDER[kindOf(b)]);
     const table = document.createElement('table');
     const head = table.createTHead().insertRow();
     for (const h of ['ファイル', '行', '種類', '内容']) {
@@ -95,7 +99,9 @@
     for (const d of problems.slice(0, 200)) {
       const row = body.insertRow();
       row.className = `sev-${d.severity}`;
-      const cells = [d.file, d.line, KINDS[d.severity] ?? d.severity, d.message + (d.source && d.severity !== 'info' ? `（${d.source}）` : '')];
+      const kind = kindOf(d);
+      const detail = d.message + (d.source && kind !== 'info' ? `（${d.source}）` : '') + (d.ruleId ? ` [${d.ruleId}]` : '');
+      const cells = [d.file, d.line, KINDS[kind] ?? d.severity, detail];
       cells.forEach((v, i) => {
         const td = row.insertCell();
         td.textContent = String(v);
@@ -109,10 +115,10 @@
     box.hidden = false;
   }
 
-  /** 種類ごとの件数（例: エラー 1 件・警告 3 件・素材 2 件） */
+  /** 種類ごとの件数（例: エラー 1 件・警告 3 件・規則 1 件・素材 2 件） */
   function summarize(found) {
     return Object.entries(KINDS)
-      .map(([severity, label]) => [label, found.filter(d => d.severity === severity).length])
+      .map(([kind, label]) => [label, found.filter(d => kindOf(d) === kind).length])
       .filter(([, n]) => n > 0)
       .map(([label, n]) => `${label} ${n} 件`)
       .join('・');
