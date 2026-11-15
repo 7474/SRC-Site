@@ -95,6 +95,7 @@ src-site/
 | `/lint/` | ブラウザで動く lint（7474/SRC の SRCLintWeb） | 不要 | 静的アセット |
 | `/check` | データ・シナリオのチェッカー。選ぶかドロップした zip・フォルダ・ファイルを、投稿と同じ検査（zip の目次の規則・srcsharp lint・静的解析・素材の参照）にかける。中身（シナリオか、データだけか）に合わせて確かめる。ファイルはブラウザの外に出さない（`public/check.js`）。手元の SRC 本体・データパックを依存データとして足せる（System の .txt・Lib の .eve の中身と、ほかのファイルの名前だけをブラウザの IndexedDB `srcsite-check` に覚え、汎用データに重ねる）。SRC#Web（`/play/`）に追加した素材（IndexedDB `srcweb` の `archives` の `asset`）も、データベースがあるときだけ読み取り専用で開いて依存データにできる。汎用データが足りないと出る問題（スペシャルパワー・ラベル・include）は名前をまとめて案内する。確かめ方（パック・素材）は `localStorage` に覚える | 不要 | ― |
 | `/viewer/` | データビューア（7474/SRC の SRCDataViewer。srcv.7474.jp と同じもの）。データは 7474/SRC-Data（GitHub）と、このサイトの公開している zip（`viewer.json` で `/api/viewer/index.json` を読む。[素材の投稿と閲覧](resources.md)）からブラウザが読む。頁の中の道は `index.html` を返す | 不要 | 静的アセット |
+| `/studio/` | SRC#Studio（7474/SRC の SRCStudio。かんたん作成・マップ作成ツール）。`studio.json`（`scripts/assemble.sh` が書く）で、かんたん作成のシナリオをこのサイトの SRC#Web（`/play/`）に渡し、既定の共有パックを重ねて遊ぶ。作品のデータと場面のサンプルは 7474/SRC-Data から読む（[7474/SRC の docs/tools/quick-create.md](https://github.com/7474/SRC/blob/master/docs/tools/quick-create.md)） | 不要 | 静的アセット |
 | `/static/` | ポータルの CSS・JS | 不要 | 静的アセット |
 
 ### 公開の画面
