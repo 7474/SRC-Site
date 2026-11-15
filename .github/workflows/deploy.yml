@@ -84,6 +84,12 @@ jobs:
           for p in web:SRCSharpWeb lint:SRCLintWeb viewer:SRCDataViewer; do
             mkdir -p "out/${p%%:*}/wwwroot" && unzip -q "dev/${p#*:}.zip" -d "out/${p%%:*}/wwwroot"
           done
+          # SRC#Studio（かんたん作成・マップ作成ツール）。古い開発版には無い
+          if jq -e '.files[] | select(.name == "SRCStudio.zip")' dev/manifest.json > /dev/null; then
+            gh release download dev -R 7474/SRC -D dev -p SRCStudio.zip --clobber
+            (cd dev && jq -r '.files[] | select(.name == "SRCStudio.zip") | "\(.sha256)  \(.name)"' manifest.json | sha256sum -c -)
+            mkdir -p out/studio/wwwroot && unzip -q dev/SRCStudio.zip -d out/studio/wwwroot
+          fi
           commit=$(jq -r .commit dev/manifest.json)
           echo "version=dev $(jq -r .app dev/manifest.json) ${commit:0:7}" >> "$GITHUB_OUTPUT"
           echo "::notice::7474/SRC の開発版 $(jq -r .app dev/manifest.json)（${commit}）を使う"
@@ -114,7 +120,8 @@ jobs:
             out/web
             out/lint
             out/viewer
-          key: srcweb-aot-lint-viewer-${{ steps.src.outputs.sha }}
+            out/studio
+          key: srcweb-aot-lint-viewer-studio-${{ steps.src.outputs.sha }}
 
       - uses: actions/setup-dotnet@v6
         if: env.SRC_REF != 'dev' && steps.published.outputs.cache-hit != 'true'
@@ -147,6 +154,10 @@ jobs:
           viewer=srcsharp/SRC.Sharp/SRCDataViewer/SRCDataViewer.csproj
           [ -f "$viewer" ] || viewer=srcsharp/SRC.Sharp/SRCTestBlazor/SRCTestBlazor.csproj
           dotnet publish "$viewer" -c Release -o out/viewer
+          # SRC#Studio（7474/SRC の SRCStudio。古い版には無い）。最小の汎用データの地形も入れる
+          if [ -f srcsharp/tools/studio_bundle.sh ]; then
+            bash srcsharp/tools/studio_bundle.sh out/studio/wwwroot
+          fi
 
       - uses: actions/setup-node@v7
         with:
@@ -162,6 +173,7 @@ jobs:
         run: |
           if [ -d out/lint/wwwroot ]; then export SRCLINT_DIR=out/lint/wwwroot; fi
           if [ -d out/viewer/wwwroot ]; then export SRCVIEWER_DIR=out/viewer/wwwroot; fi
+          if [ -d out/studio/wwwroot ]; then export SRCSTUDIO_DIR=out/studio/wwwroot; fi
           SRCWEB_DIR=out/web/wwwroot SRC_VERSION="${{ steps.dev.outputs.version || steps.src.outputs.version }}" bash scripts/assemble.sh
 
       - name: Deploy to Cloudflare

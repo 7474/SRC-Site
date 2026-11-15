@@ -59,6 +59,10 @@ app.on(['GET', 'HEAD'], '/play/*', async c => {
 app.on(['GET', 'HEAD'], '/static/*', c => c.env.ASSETS.fetch(c.req.raw));
 // ブラウザで動く lint（7474/SRC の SRCLintWeb。スレッドを使わないのでクロスオリジン分離は要らない）。投稿の画面が読み込む
 app.on(['GET', 'HEAD'], '/lint/*', c => c.env.ASSETS.fetch(c.req.raw));
+// SRC#Studio（7474/SRC の SRCStudio。かんたん作成・マップ作成ツール。スレッドを使わない）。
+// かんたん作成のシナリオは、同じサイトの SRC#Web（/play/）にブラウザの IndexedDB で渡す（7474/SRC の docs/tools/quick-create.md）
+app.get('/studio', c => c.redirect('/studio/'));
+app.on(['GET', 'HEAD'], '/studio/*', c => c.env.ASSETS.fetch(c.req.raw));
 // データビューア（7474/SRC の SRCDataViewer）。データは 7474/SRC-Data（GitHub）と、このサイトの公開している zip（/api/viewer/）からブラウザが読む
 app.get('/viewer', c => c.redirect('/viewer/'));
 app.on(['GET', 'HEAD'], '/viewer/*', async c => {

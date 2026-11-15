@@ -3,6 +3,7 @@
 #   dist/static/  ポータルの CSS・JS（public/）
 #   dist/play/    SRC#Web の発行物（$SRCWEB_DIR。無ければ仮の頁）
 #   dist/lint/    ブラウザで動く lint の発行物（$SRCLINT_DIR。7474/SRC の SRCLintWeb。無ければ置かず、投稿の画面は lint を飛ばす）
+#   dist/studio/  SRC#Studio の発行物（$SRCSTUDIO_DIR。7474/SRC の SRCStudio。無ければ置かない）と、このサイトの SRC#Web・素材を使う設定（studio.json）
 #   dist/viewer/  データビューアの発行物（$SRCVIEWER_DIR。7474/SRC の SRCDataViewer。無ければ置かない）と、このサイトの zip を読む設定（viewer.json）
 # 使い方: SRCWEB_DIR=out/web/wwwroot SRCLINT_DIR=out/lint/wwwroot SRC_VERSION="master abc1234" scripts/assemble.sh
 set -euo pipefail
@@ -51,6 +52,25 @@ if [ -n "${SRCLINT_DIR:-}" ]; then
     mkdir -p "dist/lint/$(dirname "$f")"
     cp "$SRCLINT_DIR/$f" "dist/lint/$f"
   done
+fi
+
+if [ -n "${SRCSTUDIO_DIR:-}" ]; then
+  mkdir -p dist/studio
+  (cd "$SRCSTUDIO_DIR" && find . -type f ! -name '*.br' ! -name '*.gz') | while read -r f; do
+    mkdir -p "dist/studio/$(dirname "$f")"
+    cp "$SRCSTUDIO_DIR/$f" "dist/studio/$f"
+  done
+  # かんたん作成で作ったシナリオは、このサイトの SRC#Web（/play/）に渡し、既定の共有パック（packs/*.json の is_default。priority の順）を重ねて遊ぶ
+  # （7474/SRC の docs/tools/quick-create.md の「サイトごとの設定」）。作品のデータと場面のカタログは既定（7474/SRC-Data）のまま
+  requires=$(jq -s -c '[.[] | select(.is_default == 1)] | sort_by(.priority) | map(.id)' packs/*.json)
+  jq -n --argjson requires "$requires" '{web: "/play/", requires: $requires}' > dist/studio/studio.json.site
+  if [ -f dist/studio/studio.json ]; then
+    jq -s '.[0] * .[1]' dist/studio/studio.json dist/studio/studio.json.site > dist/studio/studio.json.tmp
+    mv dist/studio/studio.json.tmp dist/studio/studio.json
+  else
+    mv dist/studio/studio.json.site dist/studio/studio.json
+  fi
+  rm -f dist/studio/studio.json.site
 fi
 
 if [ -n "${SRCVIEWER_DIR:-}" ]; then

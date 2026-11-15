@@ -45,10 +45,11 @@ export function Home(props: { q: string; latest: ListItem[]; popular: ListItem[]
             <p>SRC（Simulation RPG Construction）のシナリオを投稿・配布するサイトです。ブラウザ版の SRC#Web ですぐ遊べ、zip をダウンロードして手元の SRC・SRC# でも遊べます。</p>
             <div class="actions">
               <a class="button primary" href="/play/">SRC#Web で遊ぶ</a>
+              <a class="button" href="/studio/">好きなキャラで戦わせる</a>
               <a class="button" href="/my/scenarios/new">シナリオを投稿する</a>
               <a class="button" href="/packs">素材を投稿する</a>
             </div>
-            <p class="tools">道具：<a href="/check">チェッカー</a>（シナリオ・データの書き方を確かめる）・<a href="/viewer/">データビューア</a>（データ・画像・音を見る）・<a href="/packs">共有パック</a>（シナリオが使う素材。だれでも作れ、投稿できる）</p>
+            <p class="tools">道具：<a href="/studio/">SRC#Studio</a>（好きな作品のキャラを選んで戦わせるシナリオを作り、すぐ遊ぶ。マップを描く）・<a href="/check">チェッカー</a>（シナリオ・データの書き方を確かめる）・<a href="/viewer/">データビューア</a>（データ・画像・音を見る）・<a href="/packs">共有パック</a>（シナリオが使う素材。だれでも作れ、投稿できる）</p>
           </section>
           {props.popular.length > 0 && (
             <section>
