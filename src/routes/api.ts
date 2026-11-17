@@ -16,7 +16,7 @@ const MAX_TOTAL_PER_USER = 5 * 1024 * 1024 * 1024;
 const MAX_VERSIONS_PER_DAY = 10;
 
 async function packs(db: D1Database): Promise<PackRow[]> {
-  return (await db.prepare('SELECT * FROM packs').all<PackRow>()).results;
+  return (await db.prepare('SELECT * FROM packs ORDER BY priority, id').all<PackRow>()).results;
 }
 
 function catalogHeaders(c: { header: (k: string, v: string) => void }) {
@@ -28,7 +28,8 @@ function catalogHeaders(c: { header: (k: string, v: string) => void }) {
 api.get('/catalog.json', async c => {
   const rows = (await c.env.DB.prepare(`${PLAYABLE_SELECT} AND s.visibility = 'public' ORDER BY s.updated_at DESC`).all<PlayableRow>()).results;
   catalogHeaders(c);
-  return c.json(catalog(c.env.SITE_NAME, rows, await packs(c.env.DB)));
+  // 既定のパックは使う公開シナリオが無くても入れる（SRC#Studio のかんたん作成の ?stored= が探す）
+  return c.json(catalog(c.env.SITE_NAME, rows, await packs(c.env.DB), { defaultPacks: true }));
 });
 
 // 1 本だけのカタログ（SRC#Web の ?play= で開くとき。限定公開も含む）

@@ -56,7 +56,7 @@ flowchart LR
 | `/` `/s/<id>` `/u/<name>` | ポータルの画面（一覧・詳細・投稿者） | 通常 |
 | `/play/` | SRC#Web（`<base href="/play/">`） | COOP `same-origin`・COEP `require-corp`（SRC#Web はマルチスレッドのため必須） |
 | `/api/*` | JSON の API（投稿・カタログ） | 通常 |
-| `/api/catalog.json` | 公開中のシナリオから作るカタログ | CORP `same-origin` |
+| `/api/catalog.json` | 公開中のシナリオ（と、それらが使うパック・既定のパック）から作るカタログ | CORP `same-origin` |
 | `/files/scenarios/<id>/<version>.zip` | シナリオの zip（R2）。Range・ETag に対応 | CORP、`Content-Disposition`（ダウンロード時） |
 | `/files/assets/<id>/<version>.zip` | 素材の zip（汎用戦闘アニメなど） | CORP |
 

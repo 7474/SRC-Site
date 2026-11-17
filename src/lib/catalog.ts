@@ -81,13 +81,19 @@ export function packEntry(p: PackRow): CatalogEntry {
   return entry;
 }
 
-export function catalog(name: string, scenarios: PlayableRow[], packs: PackRow[]) {
+/**
+ * カタログ: シナリオと、それらが使うパック。
+ * defaultPacks なら、サイトの既定のパックも（使うシナリオが無くても）入れる。サイトのカタログ（/api/catalog.json）で使う。
+ * SRC#Studio のかんたん作成が SRC#Web に渡すシナリオ（?stored=）は、求めるパック（既定のパック）をこのカタログから探し、無いものは重ねずに遊ぶため
+ */
+export function catalog(name: string, scenarios: PlayableRow[], packs: PackRow[], options: { defaultPacks?: boolean } = {}) {
   const entries = scenarios.map(s => scenarioEntry(s, packs));
   const used = new Set(entries.flatMap(e => e.requires ?? []));
+  const listed = (p: PackRow) => used.has(p.id) || (Boolean(options.defaultPacks) && Boolean(p.is_default));
   return {
     format: 1,
     name,
-    entries: [...entries, ...packs.filter(p => used.has(p.id) && usablePack(p)).map(packEntry)],
+    entries: [...entries, ...packs.filter(p => listed(p) && usablePack(p)).map(packEntry)],
   };
 }
 

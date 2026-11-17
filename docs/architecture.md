@@ -148,7 +148,7 @@ src-site/
 
 | パス | 内容 |
 |---|---|
-| `GET /api/catalog.json` | 公開中のシナリオと、それらが使うパックのカタログ |
+| `GET /api/catalog.json` | 公開中のシナリオと、それらが使うパック・サイトの既定のパックのカタログ |
 | `GET /api/catalog/:slug.json` | 1 本のシナリオと、それが使うパックのカタログ（SRC#Web の `playCatalog`） |
 | `POST /api/scenarios/:slug/versions` ほか | 投稿の API（下の「投稿」） |
 | `GET /files/scenarios/:slug/:number.zip` | シナリオの版の zip（R2。Range・ETag） |
@@ -392,6 +392,7 @@ flowchart TB
 }
 ```
 
+- パックは、公開中のシナリオが使うものと、サイトの既定のパック（`is_default`）を入れる。既定のパックは、使う公開シナリオが無くても入れる（SRC#Studio のかんたん作成が SRC#Web に `?stored=` で渡すシナリオは、求めるパックをこのカタログから探し、無いものは重ねずに遊ぶため）
 - `requires` は「サイトの既定のパック（`is_default`）− 投稿者が外したもの（`excludes`）＋ 投稿者が足したもの（`requires`）」を、`priority` の順に並べる。まだ zip の無いパック（利用者が作り、一度も反映していないもの）は除く
 - `/play/srcweb.json`: `title: "SRC-Site"`、`catalogs: ["/api/catalog.json"]`、`allowUserArchives: true`、`allowUserCatalogs: false`（他のサイトのカタログは読ませない）
 - カタログが大きくなったら、`/api/catalog.json` は一覧用の軽いものにし、`?play=<slug>` で開くときは `/api/catalog/<slug>.json`（そのシナリオと要るパックだけ）を読む形にする（SRC#Web の変更）

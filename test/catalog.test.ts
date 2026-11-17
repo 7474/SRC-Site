@@ -17,7 +17,7 @@ describe('resolveRequires', () => {
     expect(resolveRequires(packs, ['unknown', 'old'], [])).toEqual(['basic', 'graphic']);
   });
 
-  it('カタログはシナリオと、使うパックだけを入れる', () => {
+  it('カタログはシナリオと、使うパック・既定のパックを入れる（取り下げたものは除く）', () => {
     const row: PlayableRow = {
       slug: 'lantern', title: 'ランタン号', author: null, license: 'CC0', description: null,
       version_id: 42, number: 3, etag: 'abcdef0123456789-3', root: 'lantern', eve: '01.eve', requires: '[]', excludes: '[]',
@@ -31,6 +31,23 @@ describe('resolveRequires', () => {
       ['basic', 'asset', '/files/packs/basic/v1.zip'],
       ['graphic', 'asset', '/files/packs/graphic/v1.zip'],
     ]);
+  });
+
+  it('使う公開シナリオが無くても、配れる既定のパックは入れる（SRC#Studio のかんたん作成の ?stored= が探す）', () => {
+    expect(catalog('Site', [], packs, { defaultPacks: true }).entries.map(e => [e.id, e.kind, e.archive])).toEqual([
+      ['basic', 'asset', '/files/packs/basic/v1.zip'],
+      ['graphic', 'asset', '/files/packs/graphic/v1.zip'],
+    ]);
+    const excluding: PlayableRow = {
+      slug: 'plain', title: 'plain', author: null, license: null, description: null,
+      version_id: 1, number: 1, etag: '', root: null, eve: null, requires: '["gsc"]', excludes: '["graphic"]',
+    };
+    // シナリオが外した既定のパックもカタログには入る（シナリオの requires には入らない）
+    const c = catalog('Site', [excluding], packs, { defaultPacks: true });
+    expect(c.entries[0].requires).toEqual(['basic', 'gsc']);
+    expect(c.entries.slice(1).map(e => e.id)).toEqual(['basic', 'graphic', 'gsc']);
+    // 1 本だけのカタログ（defaultPacks なし）は使うパックだけ
+    expect(catalog('Site', [excluding], packs).entries.slice(1).map(e => e.id)).toEqual(['basic', 'gsc']);
   });
 });
 
