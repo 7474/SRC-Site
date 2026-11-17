@@ -91,6 +91,15 @@ export function catalog(name: string, scenarios: PlayableRow[], packs: PackRow[]
   };
 }
 
+/** かんたん作成（?stored=）向けに、配れる既定パックだけを返すカタログ */
+export function defaultPacksCatalog(name: string, packs: PackRow[]) {
+  return {
+    format: 1,
+    name,
+    entries: packs.filter(p => Boolean(p.is_default) && usablePack(p)).map(packEntry),
+  };
+}
+
 /** zip の URL（lint・チェッカーが汎用データを読むときに使う） */
 export function archiveUrls(packs: PackRow[], ids: string[]): string[] {
   return ids.map(id => packs.find(p => p.id === id)).filter((p): p is PackRow => Boolean(p)).map(p => `/files/packs/${p.id}/${p.version}.zip`);

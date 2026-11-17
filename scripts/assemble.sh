@@ -22,11 +22,11 @@ if [ -n "${SRCWEB_DIR:-}" ]; then
   # /play/ の下に置く（https://github.com/7474/SRC/blob/master/docs/gui/web-hosting.md の「置き方」）
   sed -i 's#<base href="/" />#<base href="/play/" />#' dist/play/index.html
   grep -q '<base href="/play/" />' dist/play/index.html
-  # ポータルの外の zip は読ませない（カタログは /api/catalog.json だけ）
+  # ポータルの外の zip は読ませない（カタログは /api/catalog.json と、かんたん作成向けの既定パック /api/packs-catalog.json）
   cat > dist/play/srcweb.json <<JSON
 {
   "title": "${SITE_TITLE:-SRC#Site}",
-  "catalogs": ["/api/catalog.json"],
+  "catalogs": ["/api/catalog.json", "/api/packs-catalog.json"],
   "playCatalog": "/api/catalog/{id}.json",
   "allowUserArchives": true,
   "allowUserCatalogs": false

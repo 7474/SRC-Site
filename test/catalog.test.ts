@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { archiveUrls, catalog, resolveRequires, type PackRow, type PlayableRow } from '../src/lib/catalog';
+import { archiveUrls, catalog, defaultPacksCatalog, resolveRequires, type PackRow, type PlayableRow } from '../src/lib/catalog';
 import { entryContentType } from '../src/lib/archives';
 import { reportUrl } from '../src/lib/util';
 
@@ -28,6 +28,13 @@ describe('resolveRequires', () => {
       requires: ['basic', 'graphic'],
     });
     expect(c.entries.slice(1).map(e => [e.id, e.kind, e.archive])).toEqual([
+      ['basic', 'asset', '/files/packs/basic/v1.zip'],
+      ['graphic', 'asset', '/files/packs/graphic/v1.zip'],
+    ]);
+  });
+
+  it('defaultPacksCatalog は配れる既定パックだけを入れる', () => {
+    expect(defaultPacksCatalog('Site', packs).entries.map(e => [e.id, e.kind, e.archive])).toEqual([
       ['basic', 'asset', '/files/packs/basic/v1.zip'],
       ['graphic', 'asset', '/files/packs/graphic/v1.zip'],
     ]);

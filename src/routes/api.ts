@@ -1,7 +1,7 @@
 // JSON の API（カタログ・投稿）
 import { Hono } from 'hono';
 import type { AppEnv, User } from '../env';
-import { catalog, choosePacks, PLAYABLE_SELECT, type PackRow, type PlayableRow } from '../lib/catalog';
+import { catalog, choosePacks, defaultPacksCatalog, PLAYABLE_SELECT, type PackRow, type PlayableRow } from '../lib/catalog';
 import { verifyTurnstile } from '../lib/turnstile';
 import { canPresign } from '../lib/presign';
 import { finishUpload, PART_SIZE, partCount, partTarget, putPart, startUpload, validPart } from '../lib/multipart';
@@ -16,7 +16,7 @@ const MAX_TOTAL_PER_USER = 5 * 1024 * 1024 * 1024;
 const MAX_VERSIONS_PER_DAY = 10;
 
 async function packs(db: D1Database): Promise<PackRow[]> {
-  return (await db.prepare('SELECT * FROM packs').all<PackRow>()).results;
+  return (await db.prepare('SELECT * FROM packs ORDER BY priority, id').all<PackRow>()).results;
 }
 
 function catalogHeaders(c: { header: (k: string, v: string) => void }) {
@@ -29,6 +29,12 @@ api.get('/catalog.json', async c => {
   const rows = (await c.env.DB.prepare(`${PLAYABLE_SELECT} AND s.visibility = 'public' ORDER BY s.updated_at DESC`).all<PlayableRow>()).results;
   catalogHeaders(c);
   return c.json(catalog(c.env.SITE_NAME, rows, await packs(c.env.DB)));
+});
+
+// SRC#Studio のかんたん作成（?stored=）などが使う既定の共有パックのカタログ
+api.get('/packs-catalog.json', async c => {
+  catalogHeaders(c);
+  return c.json(defaultPacksCatalog(c.env.SITE_NAME, await packs(c.env.DB)));
 });
 
 // 1 本だけのカタログ（SRC#Web の ?play= で開くとき。限定公開も含む）
